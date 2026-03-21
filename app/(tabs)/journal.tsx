@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Pressable,
   TextInput,
   Modal,
@@ -12,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Plus, X } from 'lucide-react-native';
 import JournalEntryComponent from '../../components/JournalEntry';
@@ -22,7 +22,7 @@ import {
   deleteJournalEntry,
   type JournalEntry,
 } from '../../lib/database';
-import { COLORS } from '../../lib/constants';
+import { COLORS, getLocalDateString, parseLocalDate } from '../../lib/constants';
 
 export default function JournalScreen() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -53,7 +53,7 @@ export default function JournalScreen() {
       return;
     }
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       await insertJournalEntry({
         title: title.trim(),
         content: content.trim(),
@@ -72,12 +72,12 @@ export default function JournalScreen() {
 
   const handleDelete = (entry: JournalEntry) => {
     Alert.alert(
-      'Eintrag loschen',
-      'Diesen Eintrag wirklich loschen?',
+      'Eintrag löschen',
+      'Diesen Eintrag wirklich löschen?',
       [
         { text: 'Abbrechen', style: 'cancel' },
         {
-          text: 'Loschen',
+          text: 'Löschen',
           style: 'destructive',
           onPress: async () => {
             if (entry.id) {
@@ -138,7 +138,7 @@ export default function JournalScreen() {
             .map((date) => (
               <View key={date}>
                 <Text style={styles.dateGroup}>
-                  {new Date(date).toLocaleDateString('de-DE', {
+                  {parseLocalDate(date).toLocaleDateString('de-DE', {
                     weekday: 'long',
                     day: 'numeric',
                     month: 'long',
@@ -169,7 +169,7 @@ export default function JournalScreen() {
               <Pressable
                 onPress={() => setShowForm(false)}
                 style={styles.closeBtn}
-                accessibilityLabel="Formular schlieben"
+                accessibilityLabel="Formular schließen"
                 accessibilityRole="button"
               >
                 <X size={22} color={COLORS.muted} />
@@ -235,7 +235,7 @@ export default function JournalScreen() {
             <Pressable
               onPress={() => setDetailEntry(null)}
               style={styles.closeBtn}
-              accessibilityLabel="Eintrag schlieben"
+              accessibilityLabel="Eintrag schließen"
               accessibilityRole="button"
             >
               <X size={22} color={COLORS.muted} />
@@ -244,7 +244,7 @@ export default function JournalScreen() {
           {detailEntry && (
             <ScrollView contentContainerStyle={styles.detailContent}>
               <Text style={styles.detailDate}>
-                {new Date(detailEntry.date).toLocaleDateString('de-DE', {
+                {parseLocalDate(detailEntry.date).toLocaleDateString('de-DE', {
                   weekday: 'long',
                   day: 'numeric',
                   month: 'long',

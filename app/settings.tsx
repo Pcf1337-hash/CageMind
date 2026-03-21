@@ -5,12 +5,12 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Alert,
   Switch,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { ChevronLeft, ExternalLink, RefreshCw, Check } from 'lucide-react-native';
 import { getSetting, setSetting, clearAllData } from '../lib/database';
@@ -41,6 +41,7 @@ export default function SettingsScreen() {
   const [lastCheckTime, setLastCheckTime] = useState<string>('Noch nie');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateRelease, setUpdateRelease] = useState<ReleaseInfo | null>(null);
+  const [profileNotes, setProfileNotes] = useState<string>('');
 
   const loadData = useCallback(async () => {
     try {
@@ -55,6 +56,9 @@ export default function SettingsScreen() {
 
       const ts = await getLastCheckTimestamp();
       setLastCheckTime(formatLastCheckTime(ts));
+
+      const notes = await getSetting('user_profile_notes');
+      setProfileNotes(notes ?? '');
     } catch (e) {
       console.error('Settings load error:', e);
     }
@@ -110,16 +114,16 @@ export default function SettingsScreen() {
 
   const handleClearData = () => {
     Alert.alert(
-      'Alle Daten loschen?',
-      'Stimmungen, Tagebuch, Ubungen und Chats werden unwiderruflich geloscht.',
+      'Alle Daten löschen?',
+      'Stimmungen, Tagebuch, Übungen, Chats und das gespeicherte Persönlichkeitsprofil werden unwiderruflich gelöscht.',
       [
         { text: 'Abbrechen', style: 'cancel' },
         {
-          text: 'Alles loschen',
+          text: 'Alles löschen',
           style: 'destructive',
           onPress: async () => {
             await clearAllData();
-            Alert.alert('Erledigt', 'Alle Daten wurden geloscht.');
+            Alert.alert('Erledigt', 'Alle Daten wurden gelöscht.');
           },
         },
       ]
@@ -132,7 +136,7 @@ export default function SettingsScreen() {
         <Pressable
           onPress={() => router.back()}
           style={styles.backBtn}
-          accessibilityLabel="Zuruck"
+          accessibilityLabel="Zurück"
           accessibilityRole="button"
         >
           <ChevronLeft size={24} color={COLORS.text} />
@@ -159,7 +163,7 @@ export default function SettingsScreen() {
                 style={styles.input}
                 returnKeyType="done"
                 onSubmitEditing={handleSaveName}
-                accessibilityLabel="Name andern"
+                accessibilityLabel="Namen ändern"
               />
               <Pressable
                 onPress={handleSaveName}
@@ -177,9 +181,9 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>KI-Chat</Text>
           <View style={styles.card}>
-            <Text style={styles.fieldLabel}>Anthropic API-Schlussel</Text>
+            <Text style={styles.fieldLabel}>Anthropic API-Schlüssel</Text>
             <Text style={styles.fieldHint}>
-              Benotigst du fur den Chat. Erstelle ihn kostenlos unter console.anthropic.com
+              Benötigst du für den Chat. Erstelle ihn kostenlos unter console.anthropic.com
             </Text>
             <View style={styles.inputRow}>
               <TextInput
@@ -194,19 +198,19 @@ export default function SettingsScreen() {
                 returnKeyType="done"
                 onFocus={() => setApiKeyInput('')}
                 onSubmitEditing={handleSaveApiKey}
-                accessibilityLabel="API-Schlussel"
+                accessibilityLabel="API-Schlüssel"
               />
               <Pressable
                 onPress={handleSaveApiKey}
                 style={[styles.saveBtn, apiKeySaved && styles.saveBtnSuccess]}
-                accessibilityLabel="API-Schlussel speichern"
+                accessibilityLabel="API-Schlüssel speichern"
                 accessibilityRole="button"
               >
                 <Check size={18} color="#fff" />
               </Pressable>
             </View>
             {apiKeySaved && (
-              <Text style={styles.savedText}>Schlussel gespeichert!</Text>
+              <Text style={styles.savedText}>Schlüssel gespeichert!</Text>
             )}
           </View>
         </View>
@@ -217,7 +221,7 @@ export default function SettingsScreen() {
           <View style={styles.card}>
             <View style={styles.row}>
               <View style={styles.rowText}>
-                <Text style={styles.rowLabel}>Tagliche Erinnerung</Text>
+                <Text style={styles.rowLabel}>Tägliche Erinnerung</Text>
                 <Text style={styles.rowSub}>Jeden Tag um 20:00 Uhr</Text>
               </View>
               <Switch
@@ -225,7 +229,7 @@ export default function SettingsScreen() {
                 onValueChange={handleToggleReminder}
                 trackColor={{ false: COLORS.surface2, true: COLORS.accent }}
                 thumbColor="#fff"
-                accessibilityLabel="Tagliche Erinnerung ein/aus"
+                accessibilityLabel="Tägliche Erinnerung ein/aus"
               />
             </View>
           </View>
@@ -246,10 +250,10 @@ export default function SettingsScreen() {
               onPress={handleCheckUpdate}
               disabled={checkingUpdate}
               style={styles.row}
-              accessibilityLabel="Auf Updates prufen"
+              accessibilityLabel="Auf Updates prüfen"
               accessibilityRole="button"
             >
-              <Text style={styles.rowLabel}>Auf Updates prufen</Text>
+              <Text style={styles.rowLabel}>Auf Updates prüfen</Text>
               <RefreshCw
                 size={18}
                 color={checkingUpdate ? COLORS.muted : COLORS.accent}
@@ -259,7 +263,7 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Zuletzt gepruft</Text>
+              <Text style={styles.rowLabel}>Zuletzt geprüft</Text>
               <Text style={styles.rowValue}>{lastCheckTime}</Text>
             </View>
 
@@ -296,21 +300,38 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* KI-Gedächtnis */}
+        {profileNotes.trim().length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Was CageMind über dich weiß</Text>
+            <View style={styles.card}>
+              <Text style={styles.profileHint}>
+                CageMind speichert aus euren Gesprächen ein anonymes Profil auf deinem Gerät — nur du siehst es.
+              </Text>
+              <View style={styles.profileBox}>
+                {profileNotes.trim().split('\n').filter(Boolean).map((line, i) => (
+                  <Text key={i} style={styles.profileLine}>{line}</Text>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Danger Zone */}
         <View style={styles.section}>
           <Pressable
             onPress={handleClearData}
             style={styles.dangerBtn}
-            accessibilityLabel="Alle Daten loschen"
+            accessibilityLabel="Alle Daten löschen"
             accessibilityRole="button"
           >
-            <Text style={styles.dangerBtnText}>Alle Daten loschen</Text>
+            <Text style={styles.dangerBtnText}>Alle Daten löschen</Text>
           </Pressable>
         </View>
 
         <Text style={styles.disclaimer}>
           CageMind ersetzt keine professionelle Beratung oder Therapie.
-          Diese App dient ausschlieblich als erganzende Unterstutzung.
+          Diese App dient ausschließlich als ergänzende Unterstützung.
         </Text>
       </ScrollView>
 
@@ -454,6 +475,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 2,
     paddingBottom: 14,
+  },
+  profileHint: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  profileBox: {
+    backgroundColor: COLORS.surface2,
+    marginHorizontal: 12,
+    marginBottom: 14,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  profileLine: {
+    color: COLORS.text,
+    fontSize: 13,
+    lineHeight: 20,
   },
   dangerBtn: {
     backgroundColor: COLORS.surface,

@@ -4,9 +4,9 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { X, MessageCircle, Wind } from 'lucide-react-native';
 import CrisisBanner from '../components/CrisisBanner';
@@ -28,7 +28,7 @@ const STEPS = [
   {
     num: '3',
     title: 'Du bist sicher',
-    desc: 'Dieser Moment geht vorbei. Du hast schwierige Momente schon uberstanden. Auch diesen.',
+    desc: 'Dieser Moment geht vorbei. Du hast schwierige Momente schon überstanden. Auch diesen.',
     emoji: '💜',
   },
 ] as const;
@@ -41,7 +41,7 @@ export default function SOSScreen() {
         <Pressable
           onPress={() => router.back()}
           style={styles.closeBtn}
-          accessibilityLabel="SOS-Screen schlieben"
+          accessibilityLabel="SOS-Screen schließen"
           accessibilityRole="button"
         >
           <X size={24} color={COLORS.muted} />
@@ -73,8 +73,8 @@ export default function SOSScreen() {
         <View style={styles.actions}>
           <Pressable
             onPress={() => {
-              router.back();
-              router.push('/(tabs)/chat');
+              router.dismiss();
+              router.navigate('/(tabs)/chat');
             }}
             style={styles.actionBtn}
             accessibilityLabel="Mit CageMind sprechen"
@@ -86,16 +86,16 @@ export default function SOSScreen() {
 
           <Pressable
             onPress={() => {
-              router.back();
-              router.push('/exercises/breathing');
+              router.dismiss();
+              router.navigate('/exercises/breathing');
             }}
             style={[styles.actionBtn, styles.actionBtnSecondary]}
-            accessibilityLabel="Atemubung starten"
+            accessibilityLabel="Atemübung starten"
             accessibilityRole="button"
           >
             <Wind size={20} color={COLORS.accent} />
             <Text style={[styles.actionBtnText, styles.actionBtnTextSecondary]}>
-              Atemubung starten
+              Atemübung starten
             </Text>
           </Pressable>
         </View>

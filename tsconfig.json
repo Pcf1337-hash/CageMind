@@ -5,13 +5,17 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.d.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    ".expo/types/**/*.ts",
+    "nativewind-env.d.ts"
   ]
 }

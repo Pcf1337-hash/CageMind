@@ -4,10 +4,10 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Pressable,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Settings, Wind, MessageCircle, BookOpen } from 'lucide-react-native';
 import SOSButton from '../../components/SOSButton';
@@ -22,6 +22,7 @@ import {
 import {
   getGreeting,
   getDailyAffirmation,
+  getLocalDateString,
   MOOD_EMOJIS,
   COLORS,
 } from '../../lib/constants';
@@ -53,7 +54,7 @@ export default function HomeScreen() {
   const handleMoodSelect = async (score: number) => {
     setSelectedMood(score);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       await insertMoodEntry({
         date: today,
         mood_score: score,
@@ -91,7 +92,7 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => router.push('/settings')}
             style={styles.settingsBtn}
-            accessibilityLabel="Einstellungen offnen"
+            accessibilityLabel="Einstellungen öffnen"
             accessibilityRole="button"
           >
             <Settings size={22} color={COLORS.muted} />
@@ -136,11 +137,11 @@ export default function HomeScreen() {
             <Pressable
               onPress={() => router.push('/exercises/breathing')}
               style={styles.quickCard}
-              accessibilityLabel="Atemubung starten"
+              accessibilityLabel="Atemübung starten"
               accessibilityRole="button"
             >
               <Wind size={28} color={COLORS.accent2} />
-              <Text style={styles.quickLabel}>Atemubung</Text>
+              <Text style={styles.quickLabel}>Atemübung</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push('/(tabs)/journal')}

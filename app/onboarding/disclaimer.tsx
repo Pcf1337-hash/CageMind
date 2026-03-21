@@ -4,9 +4,9 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { CheckCircle, Circle } from 'lucide-react-native';
 import { COLORS, CRISIS_PHONE } from '../../lib/constants';
@@ -58,7 +58,7 @@ export default function DisclaimerScreen() {
             <Circle size={24} color={COLORS.muted} />
           )}
           <Text style={styles.checkLabel}>
-            Ich verstehe, dass CageMind kein Ersatz fur professionelle Hilfe ist.
+            Ich verstehe, dass CageMind kein Ersatz für professionelle Hilfe ist.
           </Text>
         </Pressable>
 

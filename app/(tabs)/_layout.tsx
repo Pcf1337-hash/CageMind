@@ -53,7 +53,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="exercises"
         options={{
-          title: 'Ubungen',
+          title: 'Übungen',
           tabBarIcon: ({ color, size }) => (
             <Wind size={size} color={color} />
           ),

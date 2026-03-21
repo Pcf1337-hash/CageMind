@@ -8,6 +8,7 @@ import {
   Modal,
   BackHandler,
 } from 'react-native';
+import Constants from 'expo-constants';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -100,7 +101,7 @@ export default function UpdateModal({
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={release.isForced ? undefined : onDismiss}
-          accessibilityLabel="Modal schlieben"
+          accessibilityLabel="Modal schließen"
         />
       </Animated.View>
 
@@ -109,12 +110,12 @@ export default function UpdateModal({
         accessibilityRole="none"
       >
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>Update verfugbar</Text>
+          <Text style={styles.badgeText}>Update verfügbar</Text>
         </View>
 
         <View style={styles.versionRow}>
           <Text style={styles.versionOld}>
-            {require('expo-constants').default.expoConfig?.version ?? '?'}
+            {Constants.expoConfig?.version ?? '?'}
           </Text>
           <ArrowRight size={18} color={COLORS.accent} />
           <Text style={styles.versionNew}>{release.version}</Text>
@@ -144,19 +145,19 @@ export default function UpdateModal({
             <Pressable
               onPress={onDismiss}
               style={styles.laterBtn}
-              accessibilityLabel="Spater erinnern"
+              accessibilityLabel="Später erinnern"
               accessibilityRole="button"
             >
-              <Text style={styles.laterText}>Spater erinnern</Text>
+              <Text style={styles.laterText}>Später erinnern</Text>
             </Pressable>
 
             <Pressable
               onPress={onSkip}
               style={styles.skipBtn}
-              accessibilityLabel="Diese Version uberspringen"
+              accessibilityLabel="Diese Version überspringen"
               accessibilityRole="button"
             >
-              <Text style={styles.skipText}>Version uberspringen</Text>
+              <Text style={styles.skipText}>Version überspringen</Text>
             </Pressable>
           </>
         )}

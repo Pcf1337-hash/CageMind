@@ -5,12 +5,12 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { setSetting } from '../../lib/database';
 import { setApiKey } from '../../lib/claude';
@@ -88,9 +88,9 @@ export default function SetupScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Anthropic API-Schlussel (optional)</Text>
+            <Text style={styles.label}>Anthropic API-Schlüssel (optional)</Text>
             <Text style={styles.hint}>
-              Benotigst du fur den Chat mit mir. Kostenlos unter console.anthropic.com
+              Benötigst du für den Chat mit mir. Kostenlos unter console.anthropic.com
               erstellen — du brauchst ihn aber nicht sofort.
             </Text>
             <TextInput
@@ -103,14 +103,14 @@ export default function SetupScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
-              accessibilityLabel="API-Schlussel eingeben"
+              accessibilityLabel="API-Schlüssel eingeben"
             />
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Tagliche Erinnerung</Text>
+            <Text style={styles.label}>Tägliche Erinnerung</Text>
             <Text style={styles.hint}>
-              Ich erinnere dich taglich um 20:00 Uhr — damit du auch an dir denkst.
+              Ich erinnere dich täglich um 20:00 Uhr — damit du auch an dir denkst.
             </Text>
             <Pressable
               onPress={notificationsEnabled ? undefined : handleRequestNotifications}

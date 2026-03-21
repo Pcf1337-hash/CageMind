@@ -35,7 +35,7 @@ export async function scheduleDailyReminder(
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'CageMind',
-        body: 'Wie geht es dir heute? Nimm dir einen Moment fur dich.',
+        body: 'Wie geht es dir heute? Nimm dir einen Moment für dich.',
         sound: false,
       },
       trigger: {

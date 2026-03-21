@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -53,6 +54,7 @@ export default function RootLayout() {
   if (!dbReady) return null;
 
   return (
+    <SafeAreaProvider>
     <View style={styles.root}>
       <StatusBar style="light" />
       <Stack
@@ -78,6 +80,18 @@ export default function RootLayout() {
           options={{ presentation: 'card', animation: 'slide_from_bottom' }}
         />
         <Stack.Screen
+          name="exercises/box-breathing"
+          options={{ presentation: 'card', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="exercises/grounding"
+          options={{ presentation: 'card', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="exercises/muscle-relaxation"
+          options={{ presentation: 'card', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
           name="exercises/affirmations"
           options={{ presentation: 'card', animation: 'slide_from_bottom' }}
         />
@@ -99,6 +113,7 @@ export default function RootLayout() {
         />
       )}
     </View>
+    </SafeAreaProvider>
   );
 }
 

@@ -11,7 +11,6 @@ import { router } from 'expo-router';
 import {
   useSharedValue,
   withTiming,
-  withSequence,
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -19,26 +18,24 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { X } from 'lucide-react-native';
 import BreathCircle from '../../components/BreathCircle';
 import { insertExerciseSession } from '../../lib/database';
-import { BREATHING_PHASES, BREATHING_ROUNDS, COLORS, getLocalDateString } from '../../lib/constants';
+import { BOX_BREATHING_PHASES, BOX_BREATHING_ROUNDS, COLORS } from '../../lib/constants';
 
-type Phase = (typeof BREATHING_PHASES)[number];
+type Phase = (typeof BOX_BREATHING_PHASES)[number];
 
-export default function BreathingScreen() {
+export default function BoxBreathingScreen() {
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState<number>(BREATHING_PHASES[0].duration);
+  const [secondsLeft, setSecondsLeft] = useState<number>(BOX_BREATHING_PHASES[0].duration);
   const [currentRound, setCurrentRound] = useState(1);
   const [isRunning, setIsRunning] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const scale = useSharedValue(1);
   const startTimeRef = useRef<number>(0);
 
-  const currentPhase: Phase = BREATHING_PHASES[currentPhaseIndex];
+  const currentPhase: Phase = BOX_BREATHING_PHASES[currentPhaseIndex];
 
   useEffect(() => {
     activateKeepAwakeAsync();
-    return () => {
-      deactivateKeepAwake();
-    };
+    return () => { deactivateKeepAwake(); };
   }, []);
 
   const animatePhase = useCallback((phase: Phase) => {
@@ -47,15 +44,13 @@ export default function BreathingScreen() {
         duration: phase.duration * 1000,
         easing: Easing.inOut(Easing.ease),
       });
-    } else if (phase.label === 'Halten') {
-      // No change
-    } else {
+    } else if (phase.label === 'Ausatmen') {
       scale.value = withTiming(1, {
         duration: phase.duration * 1000,
         easing: Easing.inOut(Easing.ease),
       });
     }
-  }, []);
+  }, [scale]);
 
   useEffect(() => {
     if (!isRunning || isFinished) return;
@@ -72,31 +67,28 @@ export default function BreathingScreen() {
 
       if (remaining <= 0) {
         clearInterval(interval);
-
-        const nextPhaseIndex = (currentPhaseIndex + 1) % BREATHING_PHASES.length;
+        const nextPhaseIndex = (currentPhaseIndex + 1) % BOX_BREATHING_PHASES.length;
         const isEndOfRound = nextPhaseIndex === 0;
 
-        if (isEndOfRound && currentRound >= BREATHING_ROUNDS) {
+        if (isEndOfRound && currentRound >= BOX_BREATHING_ROUNDS) {
           setIsRunning(false);
           setIsFinished(true);
           const duration = Math.floor((Date.now() - startTimeRef.current) / 1000);
           insertExerciseSession({
-            type: 'breathing',
+            type: 'box_breathing',
             duration_seconds: duration,
             completed: true,
-            date: getLocalDateString(),
+            date: new Date().toISOString().split('T')[0],
           }).catch(console.error);
         } else {
-          if (isEndOfRound) {
-            setCurrentRound((r) => r + 1);
-          }
+          if (isEndOfRound) setCurrentRound((r) => r + 1);
           setCurrentPhaseIndex(nextPhaseIndex);
         }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRunning, currentPhaseIndex, currentRound, isFinished]);
+  }, [isRunning, currentPhaseIndex, currentRound, isFinished, animatePhase, currentPhase]);
 
   const handleStart = () => {
     startTimeRef.current = Date.now();
@@ -111,10 +103,7 @@ export default function BreathingScreen() {
         { text: 'Weitermachen', style: 'cancel' },
         {
           text: 'Beenden',
-          onPress: () => {
-            setIsRunning(false);
-            router.back();
-          },
+          onPress: () => { setIsRunning(false); router.back(); },
         },
       ]
     );
@@ -122,9 +111,8 @@ export default function BreathingScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>4-7-8 Atemübung</Text>
+        <Text style={styles.title}>Quadrat-Atmung</Text>
         <Pressable
           onPress={isRunning ? handleStop : () => router.back()}
           style={styles.closeBtn}
@@ -138,11 +126,11 @@ export default function BreathingScreen() {
       <View style={styles.container}>
         {isFinished ? (
           <View style={styles.finishedBlock}>
-            <Text style={styles.finishedEmoji}>🌿</Text>
+            <Text style={styles.finishedEmoji}>🟦</Text>
             <Text style={styles.finishedTitle}>Gut gemacht!</Text>
             <Text style={styles.finishedText}>
-              Du hast {BREATHING_ROUNDS} Runden abgeschlossen.
-              Dein Körper wird es dir danken.
+              {BOX_BREATHING_ROUNDS} Runden Quadrat-Atmung abgeschlossen.{'\n'}
+              Dein Nervensystem dankt es dir.
             </Text>
             <Pressable
               onPress={() => router.back()}
@@ -156,7 +144,7 @@ export default function BreathingScreen() {
         ) : (
           <>
             <Text style={styles.roundIndicator}>
-              Runde {currentRound} / {BREATHING_ROUNDS}
+              Runde {currentRound} / {BOX_BREATHING_ROUNDS}
             </Text>
 
             <BreathCircle
@@ -168,14 +156,11 @@ export default function BreathingScreen() {
 
             {!isRunning && (
               <View style={styles.instructions}>
-                <Text style={styles.instrText}>
-                  Einatmen: 4 Sekunden
-                </Text>
-                <Text style={styles.instrText}>
-                  Halten: 7 Sekunden
-                </Text>
-                <Text style={styles.instrText}>
-                  Ausatmen: 8 Sekunden
+                <Text style={styles.instrTitle}>4 — 4 — 4 — 4</Text>
+                <Text style={styles.instrText}>Einatmen · Halten · Ausatmen · Halten</Text>
+                <Text style={styles.instrSub}>
+                  Jede Phase dauert genau 4 Sekunden.{'\n'}
+                  Einfach, gleichmäßig, beruhigend.
                 </Text>
               </View>
             )}
@@ -221,22 +206,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 32,
   },
-  roundIndicator: {
-    color: COLORS.muted,
-    fontSize: 14,
-    fontWeight: '600',
+  roundIndicator: { color: COLORS.muted, fontSize: 14, fontWeight: '600' },
+  instructions: { alignItems: 'center', gap: 8 },
+  instrTitle: {
+    color: COLORS.accent2,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 2,
   },
-  instructions: {
-    gap: 6,
-    alignItems: 'center',
-  },
-  instrText: {
+  instrText: { color: COLORS.text, fontSize: 15 },
+  instrSub: {
     color: COLORS.muted,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 4,
   },
   startBtn: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.accent2,
     borderRadius: 16,
     paddingHorizontal: 48,
     height: 56,
@@ -244,25 +231,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 160,
   },
-  stopBtn: {
-    backgroundColor: COLORS.surface2,
-  },
-  startBtnText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  finishedBlock: {
-    alignItems: 'center',
-    gap: 20,
-    paddingHorizontal: 16,
-  },
+  stopBtn: { backgroundColor: COLORS.surface2 },
+  startBtnText: { color: COLORS.bg, fontSize: 18, fontWeight: '700' },
+  finishedBlock: { alignItems: 'center', gap: 20, paddingHorizontal: 16 },
   finishedEmoji: { fontSize: 64 },
-  finishedTitle: {
-    color: COLORS.text,
-    fontSize: 28,
-    fontWeight: '700',
-  },
+  finishedTitle: { color: COLORS.text, fontSize: 28, fontWeight: '700' },
   finishedText: {
     color: COLORS.muted,
     fontSize: 16,
@@ -278,9 +251,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 160,
   },
-  doneBtnText: {
-    color: COLORS.bg,
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  doneBtnText: { color: COLORS.bg, fontSize: 18, fontWeight: '700' },
 });

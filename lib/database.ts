@@ -20,7 +20,7 @@ export interface JournalEntry {
 
 export interface ExerciseSession {
   id?: number;
-  type: 'breathing' | 'affirmations';
+  type: 'breathing' | 'affirmations' | 'box_breathing' | 'grounding' | 'muscle_relaxation';
   duration_seconds: number;
   completed: boolean;
   date: string;
@@ -330,16 +330,20 @@ export async function getStreak(): Promise<number> {
 
     let streak = 0;
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use local midnight to avoid UTC off-by-one on date comparisons
+    const todayMs = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    ).getTime();
 
     for (let i = 0; i < rows.length; i++) {
-      const entryDate = new Date(rows[i].date);
-      entryDate.setHours(0, 0, 0, 0);
-      const expected = new Date(today);
-      expected.setDate(today.getDate() - i);
-      expected.setHours(0, 0, 0, 0);
+      // Parse YYYY-MM-DD as local midnight (not UTC midnight)
+      const [year, month, day] = rows[i].date.split('-').map(Number);
+      const entryMs = new Date(year, month - 1, day).getTime();
+      const expectedMs = todayMs - i * 86400000;
 
-      if (entryDate.getTime() === expected.getTime()) {
+      if (entryMs === expectedMs) {
         streak++;
       } else {
         break;

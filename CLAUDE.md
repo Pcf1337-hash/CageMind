@@ -235,6 +235,9 @@ CageMind/
 │   │   └── insights.tsx             # Stimmungsverlauf + Streak
 │   ├── exercises/
 │   │   ├── breathing.tsx            # 4-7-8 Atemübung
+│   │   ├── box-breathing.tsx        # Quadrat-Atmung (4-4-4-4)
+│   │   ├── grounding.tsx            # 5-4-3-2-1 Grounding (5 Sinne)
+│   │   ├── muscle-relaxation.tsx    # Progressive Muskelentspannung
 │   │   └── affirmations.tsx         # Affirmations-Swipe-Cards
 │   ├── sos.tsx                      # SOS Fullscreen Modal
 │   └── settings.tsx                 # Einstellungen
@@ -292,7 +295,7 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 
 CREATE TABLE IF NOT EXISTS exercise_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL,  -- 'breathing' | 'affirmations'
+  type TEXT NOT NULL,  -- 'breathing' | 'box_breathing' | 'grounding' | 'muscle_relaxation' | 'affirmations'
   duration_seconds INTEGER NOT NULL DEFAULT 0,
   completed INTEGER NOT NULL DEFAULT 0,  -- SQLite boolean
   date TEXT NOT NULL,
@@ -367,7 +370,7 @@ Deine Regeln:
 - Gib keine medizinischen Diagnosen oder Ratschläge
 - Wenn jemand sehr verzweifelt klingt: ruhig bleiben, Telefonseelsorge 
   sanft erwähnen (0800 111 0 111, kostenlos, 24/7)
-- Schlage passende Übungen aus der App vor wenn sinnvoll (Atemübung, Affirmationen)
+- Schlage passende Übungen aus der App vor wenn sinnvoll (Atemübung, Quadrat-Atmung, Grounding, Progressive Entspannung, Affirmationen)
 - Nutze gelegentlich sanfte Emojis (nicht übertreiben)
 - Du erinnerst dich an den Gesprächsverlauf innerhalb der Session`;
 
@@ -808,6 +811,9 @@ Phase 6 — Tabs
 
 Phase 7 — Extra Screens
 [ ] 32. exercises/breathing.tsx
+[ ] 32b. exercises/box-breathing.tsx (Quadrat-Atmung)
+[ ] 32c. exercises/grounding.tsx (5-4-3-2-1)
+[ ] 32d. exercises/muscle-relaxation.tsx (Progressive Entspannung)
 [ ] 33. exercises/affirmations.tsx
 [ ] 34. sos.tsx (Modal)
 [ ] 35. settings.tsx (inkl. Update-Sektion)

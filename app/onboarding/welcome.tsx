@@ -4,8 +4,8 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { COLORS } from '../../lib/constants';
 
@@ -22,7 +22,7 @@ export default function WelcomeScreen() {
         <View style={styles.textBlock}>
           <Text style={styles.headline}>Hey, ich bin CageMind.</Text>
           <Text style={styles.body}>
-            Ich bin hier, um dir zuzuhoren — in ruhigen Momenten und in
+            Ich bin hier, um dir zuzuhören — in ruhigen Momenten und in
             schwierigen. Kein Urteil, keine Eile. Nur ein offenes Ohr.
           </Text>
         </View>
@@ -30,7 +30,7 @@ export default function WelcomeScreen() {
         <Pressable
           onPress={() => router.push('/onboarding/disclaimer')}
           style={styles.btn}
-          accessibilityLabel="Weiter zur nachsten Seite"
+          accessibilityLabel="Weiter zur nächsten Seite"
           accessibilityRole="button"
         >
           <Text style={styles.btnText}>Los geht's</Text>

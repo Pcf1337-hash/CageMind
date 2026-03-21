@@ -1,13 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
-  SafeAreaView,
   Dimensions,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import {
   Gesture,
@@ -24,7 +24,7 @@ import Animated, {
 import { X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import AffirmationCard from '../../components/AffirmationCard';
 import { getSetting, setSetting, insertExerciseSession } from '../../lib/database';
-import { AFFIRMATIONS, COLORS } from '../../lib/constants';
+import { AFFIRMATIONS, COLORS, getLocalDateString } from '../../lib/constants';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -32,7 +32,7 @@ const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
 export default function AffirmationsScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
-  const [sessionStarted] = useState(Date.now());
+  const sessionStartedRef = useRef(Date.now());
 
   const translateX = useSharedValue(0);
   const opacity = useSharedValue(1);
@@ -51,14 +51,15 @@ export default function AffirmationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      sessionStartedRef.current = Date.now();
       loadFavorites();
       return () => {
-        const duration = Math.floor((Date.now() - sessionStarted) / 1000);
+        const duration = Math.floor((Date.now() - sessionStartedRef.current) / 1000);
         insertExerciseSession({
           type: 'affirmations',
           duration_seconds: duration,
           completed: true,
-          date: new Date().toISOString().split('T')[0],
+          date: getLocalDateString(),
         }).catch(console.error);
       };
     }, [loadFavorites])
@@ -114,7 +115,7 @@ export default function AffirmationsScreen() {
           <Pressable
             onPress={() => router.back()}
             style={styles.closeBtn}
-            accessibilityLabel="Schlieben"
+            accessibilityLabel="Schließen"
             accessibilityRole="button"
           >
             <X size={22} color={COLORS.muted} />
@@ -145,7 +146,7 @@ export default function AffirmationsScreen() {
               <ChevronLeft size={24} color={currentIndex === 0 ? COLORS.muted : COLORS.text} />
             </Pressable>
 
-            <Text style={styles.swipeHint}>Wischen zum Blattern</Text>
+            <Text style={styles.swipeHint}>Wischen zum Blättern</Text>
 
             <Pressable
               onPress={() => goTo('next')}
@@ -154,7 +155,7 @@ export default function AffirmationsScreen() {
                 styles.navBtn,
                 currentIndex === AFFIRMATIONS.length - 1 && styles.navBtnDisabled,
               ]}
-              accessibilityLabel="Nachste Affirmation"
+              accessibilityLabel="Nächste Affirmation"
               accessibilityRole="button"
             >
               <ChevronRight
