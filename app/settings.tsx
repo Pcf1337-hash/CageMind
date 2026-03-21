@@ -271,7 +271,7 @@ export default function SettingsScreen() {
 
             <Pressable
               onPress={() =>
-                Linking.openURL('https://github.com/NosKovsky/CageMind/releases')
+                Linking.openURL('https://github.com/Pcf1337-hash/CageMind/releases')
               }
               style={styles.row}
               accessibilityLabel="Alle Releases auf GitHub anzeigen"

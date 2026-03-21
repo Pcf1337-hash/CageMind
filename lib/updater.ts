@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import semver from 'semver';
 
 const GITHUB_RELEASES_URL =
-  'https://api.github.com/repos/NosKovsky/CageMind/releases/latest';
+  'https://api.github.com/repos/Pcf1337-hash/CageMind/releases/latest';
 const LAST_CHECK_KEY = 'last_update_check';
 const SKIPPED_VERSION_KEY = 'skipped_version';
 const CHECK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 Stunden

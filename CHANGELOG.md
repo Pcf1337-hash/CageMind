@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0] — 2026-03-21
+
+### Neu
+- Quadrat-Atmung (Box Breathing): 4-4-4-4 Atemtechnik mit Visualisierung
+- Grounding-Ubung: 5-4-3-2-1 Technik durch alle Sinne
+- Progressive Muskelentspannung: 7 Muskelgruppen, Anspannen und Loslassen
+- Persoenliches Profil: CageMind erstellt ein Profil aus allen Daten
+- Einblicke-Tab: Profil-Karte mit Zusammenfassung und Insights
+- Chat: Kontext-Sliding-Window fuer lange Unterhaltungen
+- Offline-Erkennung im Chat mit Hinweisbanner
+
+### Fixes
+- Streak-Berechnung mit lokalem Datum (kein UTC-Versatz mehr)
+- Uebungstypen vollstaendig in Datenbank unterstuetzt
+
 ## [1.0.0] — 2026-03-21
 
 ### Neu
