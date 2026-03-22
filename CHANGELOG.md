@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] — 2026-03-22
+
+### Neu
+- Gehirn-Zentrale: Neuer Tab mit kognitivem Training (Gedächtnis, Sprache, Logik, Reaktion)
+- Memory-Karten: Klassisches Kartenspiel mit adaptiver Schwierigkeit und Reanimated Flip-Animation
+- Anagramm: Buchstaben antippen und zum richtigen Wort anordnen, Zeitlimit per Level
+- Zahlenreihen + Mathe-Sprint: Multiple-Choice Sequenzen und Tipp-Eingabe mit Combo-Bonus
+- Tap-Target + Stroop-Test: Reaktionsmessung und kognitiver Interferenz-Test
+- Adaptive Schwierigkeit: Level steigt automatisch wenn Genauigkeit > 80%
+- XP-System mit animierter XP-Leiste und Gesamt-Level
+- Tages-Mission: Täglich wechselnde Aufgabe mit XP-Belohnung
+- 15 Badges (freigeschaltet/gesperrt) mit Unlock-Logik
+- Vollständige Kognitivstatistiken per Domain (faltbare Sektionen)
+- Patientenakte kompakt in Einblicke: Accordion-Ansicht direkt im Tab
+
+### Verbesserungen
+- Einblicke-Tab: Profil-Sektionen jetzt als kompakte Accordion-Karte mit Farbkodierung
+- "Vollständige Akte öffnen" Link aus Einblicke direkt zur Patientenakte
+
 ## [1.2.0] — 2026-03-22
 
 ### Neu

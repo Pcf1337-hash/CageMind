@@ -9,8 +9,8 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
-import { RefreshCw } from 'lucide-react-native';
+import { useFocusEffect, router } from 'expo-router';
+import { RefreshCw, ChevronDown, ChevronRight, FileText } from 'lucide-react-native';
 import MoodChart from '../../components/MoodChart';
 import StreakCard from '../../components/StreakCard';
 import {
@@ -57,22 +57,46 @@ function getLast7Days(): Array<{ dateStr: string; label: string }> {
   return days;
 }
 
-function parseProfileSummary(notes: string): { summary: string; bullets: string[] } {
-  const lines = notes.trim().split('\n').filter(Boolean);
-  let summary = '';
-  const bullets: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('ZUSAMMENFASSUNG:')) {
-      summary = line.replace('ZUSAMMENFASSUNG:', '').trim();
-    } else if (line.startsWith('- ')) {
-      bullets.push(line.slice(2).trim());
+const SECTION_COLORS: Record<string, string> = {
+  'Anamnese': '#F87171',
+  'Psychisches Bild': '#A78BFA',
+  'Auslöser & Stressoren': '#FCD34D',
+  'Ressourcen & Coping': '#86EFAC',
+  'Soziales & Persönliches': '#60A5FA',
+  'Verlaufsnotizen': '#34D399',
+};
+
+interface ProfileSection {
+  title: string;
+  lines: string[];
+}
+
+function parseProfileFull(notes: string): { summary: string | null; sections: ProfileSection[] } {
+  const sections: ProfileSection[] = [];
+  let current: ProfileSection | null = null;
+  let summary: string | null = null;
+
+  for (const raw of notes.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const summaryMatch = line.match(/^(?:PROFIL|PATIENTENPROFIL|ZUSAMMENFASSUNG):\s*(.+)/);
+    if (summaryMatch) { summary = summaryMatch[1]; continue; }
+    if (line.startsWith('## ')) {
+      if (current) sections.push(current);
+      current = { title: line.slice(3).trim(), lines: [] };
+    } else if (line.startsWith('- ') && current) {
+      current.lines.push(line.slice(2).trim());
+    } else if (current && line) {
+      current.lines.push(line);
     }
   }
-  // Fallback: if no ZUSAMMENFASSUNG line, treat everything as bullets
-  if (!summary && bullets.length === 0) {
-    return { summary: '', bullets: lines };
+  if (current) sections.push(current);
+
+  if (sections.length === 0 && !summary && notes.trim()) {
+    const bullets = notes.trim().split('\n').filter(Boolean).map(l => l.replace(/^[-•]\s*/, ''));
+    if (bullets.length > 0) sections.push({ title: 'Notizen', lines: bullets });
   }
-  return { summary, bullets };
+  return { summary, sections };
 }
 
 export default function InsightsScreen() {
@@ -85,6 +109,8 @@ export default function InsightsScreen() {
   const [profileNotes, setProfileNotes] = useState('');
   const [buildingProfile, setBuildingProfile] = useState(false);
   const [userName, setUserName] = useState('');
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [lastProfileUpdate, setLastProfileUpdate] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -120,6 +146,9 @@ export default function InsightsScreen() {
 
       const notes = await getSetting('user_profile_notes');
       setProfileNotes(notes ?? '');
+
+      const lastUpdate = await getSetting('profile_last_updated');
+      setLastProfileUpdate(lastUpdate ?? null);
 
       const name = await getSetting('user_name');
       setUserName(name ?? 'du');
@@ -177,8 +206,23 @@ export default function InsightsScreen() {
     }
   }, [userName]);
 
-  const { summary, bullets } = parseProfileSummary(profileNotes);
+  const { summary, sections } = parseProfileFull(profileNotes);
   const hasProfile = profileNotes.trim().length > 0;
+
+  const toggleSection = (title: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  };
+
+  const formattedProfileDate = lastProfileUpdate
+    ? new Date(lastProfileUpdate).toLocaleDateString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      })
+    : null;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -227,66 +271,99 @@ export default function InsightsScreen() {
           <StreakCard streak={streak} />
         </View>
 
-        {/* Persönliches Profil */}
+        {/* Patientenakte (kompakt) */}
         <View style={styles.section}>
           <View style={styles.profileHeader}>
-            <Text style={styles.sectionTitle}>Dein persönliches Profil</Text>
-            <Pressable
-              onPress={handleBuildProfile}
-              disabled={buildingProfile}
-              style={styles.refreshBtn}
-              accessibilityLabel="Profil aufbauen"
-              accessibilityRole="button"
-            >
-              {buildingProfile ? (
-                <ActivityIndicator size="small" color={COLORS.accent} />
-              ) : (
-                <RefreshCw size={16} color={COLORS.accent} />
-              )}
-            </Pressable>
+            <View style={styles.profileHeaderLeft}>
+              <FileText size={15} color={COLORS.accent} />
+              <Text style={styles.sectionTitle}>Patientenakte</Text>
+            </View>
+            <View style={styles.profileHeaderRight}>
+              <Pressable
+                onPress={handleBuildProfile}
+                disabled={buildingProfile}
+                style={styles.refreshBtn}
+                accessibilityLabel="Akte aktualisieren"
+                accessibilityRole="button"
+              >
+                {buildingProfile ? (
+                  <ActivityIndicator size="small" color={COLORS.accent} />
+                ) : (
+                  <RefreshCw size={14} color={COLORS.accent} />
+                )}
+              </Pressable>
+            </View>
           </View>
 
           {!hasProfile ? (
             <View style={styles.profileEmpty}>
-              <Text style={styles.profileEmptyEmoji}>🧠</Text>
+              <Text style={styles.profileEmptyEmoji}>🗂️</Text>
               <Text style={styles.profileEmptyText}>
-                Tippe auf das Symbol oben um CageMind dein persönliches Profil erstellen zu lassen — aus Stimmungen, Tagebuch, Übungen und Chat.
+                CageMind analysiert deine Gespräche, Stimmungen und Tagebucheinträge und erstellt daraus eine persönliche Akte.
               </Text>
               <Pressable
                 onPress={handleBuildProfile}
                 disabled={buildingProfile}
                 style={styles.buildBtn}
-                accessibilityLabel="Profil jetzt aufbauen"
+                accessibilityLabel="Akte jetzt erstellen"
                 accessibilityRole="button"
               >
                 {buildingProfile ? (
                   <ActivityIndicator size="small" color={COLORS.bg} />
                 ) : (
-                  <Text style={styles.buildBtnText}>Profil aufbauen</Text>
+                  <Text style={styles.buildBtnText}>Akte erstellen</Text>
                 )}
               </Pressable>
             </View>
           ) : (
             <View style={styles.profileCard}>
-              {summary.length > 0 && (
+              {summary && (
                 <View style={styles.summaryBox}>
-                  <Text style={styles.summaryText}>{summary}</Text>
+                  <Text style={styles.summaryText} numberOfLines={3}>{summary}</Text>
                 </View>
               )}
-              {bullets.length > 0 && (
-                <View style={styles.bulletsBox}>
-                  {bullets.map((b, i) => {
-                    const colonIdx = b.indexOf(':');
-                    const cat = colonIdx > 0 ? b.slice(0, colonIdx).trim() : null;
-                    const fact = colonIdx > 0 ? b.slice(colonIdx + 1).trim() : b;
-                    return (
-                      <View key={i} style={styles.bulletRow}>
-                        <Text style={styles.bulletCat}>{cat ?? '•'}</Text>
-                        <Text style={styles.bulletFact}>{fact}</Text>
+
+              {sections.map((section) => {
+                const color = SECTION_COLORS[section.title] ?? COLORS.accent;
+                const expanded = expandedSections.has(section.title);
+                return (
+                  <View key={section.title}>
+                    <Pressable
+                      onPress={() => toggleSection(section.title)}
+                      style={styles.accordionRow}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${section.title} ${expanded ? 'einklappen' : 'ausklappen'}`}
+                    >
+                      <View style={[styles.sectionDot, { backgroundColor: color }]} />
+                      <Text style={[styles.accordionTitle, { color }]}>{section.title}</Text>
+                      <Text style={styles.accordionCount}>{section.lines.length}</Text>
+                      {expanded
+                        ? <ChevronDown size={14} color={COLORS.muted} />
+                        : <ChevronRight size={14} color={COLORS.muted} />
+                      }
+                    </Pressable>
+                    {expanded && section.lines.map((line, j) => (
+                      <View key={j} style={styles.accordionBullet}>
+                        <View style={[styles.bulletDotSmall, { backgroundColor: color + '88' }]} />
+                        <Text style={styles.bulletTextSmall}>{line}</Text>
                       </View>
-                    );
-                  })}
-                </View>
+                    ))}
+                  </View>
+                );
+              })}
+
+              <Pressable
+                onPress={() => router.push('/patient-file')}
+                style={styles.fullFileBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Vollständige Akte öffnen"
+              >
+                <Text style={styles.fullFileBtnText}>Vollständige Akte öffnen</Text>
+                <ChevronRight size={13} color={COLORS.accent} />
+              </Pressable>
+
+              {formattedProfileDate && (
+                <Text style={styles.profileDateHint}>Aktualisiert: {formattedProfileDate}</Text>
               )}
             </View>
           )}
@@ -340,10 +417,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  profileHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  profileHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.accent + '22',
     alignItems: 'center',
     justifyContent: 'center',
@@ -355,7 +442,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
-  profileEmptyEmoji: { fontSize: 40 },
+  profileEmptyEmoji: { fontSize: 36 },
   profileEmptyText: {
     color: COLORS.muted,
     fontSize: 14,
@@ -365,51 +452,103 @@ const styles = StyleSheet.create({
   buildBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 14,
-    paddingHorizontal: 32,
-    height: 48,
+    paddingHorizontal: 28,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
-  buildBtnText: { color: COLORS.bg, fontSize: 15, fontWeight: '700' },
+  buildBtnText: { color: COLORS.bg, fontSize: 14, fontWeight: '700' },
   profileCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   summaryBox: {
-    backgroundColor: COLORS.accent + '22',
+    backgroundColor: COLORS.accent + '18',
     borderLeftWidth: 3,
     borderLeftColor: COLORS.accent,
-    padding: 16,
+    padding: 12,
+    margin: 12,
+    marginBottom: 4,
+    borderRadius: 8,
   },
   summaryText: {
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 23,
+    fontSize: 13,
+    lineHeight: 20,
     fontStyle: 'italic',
   },
-  bulletsBox: {
-    padding: 16,
-    gap: 10,
-  },
-  bulletRow: {
+  accordionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surface2,
   },
-  bulletCat: {
-    color: COLORS.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    width: 110,
-    paddingTop: 2,
+  sectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     flexShrink: 0,
   },
-  bulletFact: {
+  accordionTitle: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  accordionCount: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  accordionBullet: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingLeft: 30,
+    paddingRight: 14,
+    paddingVertical: 3,
+    gap: 8,
+  },
+  bulletDotSmall: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 7,
+    flexShrink: 0,
+  },
+  bulletTextSmall: {
     flex: 1,
     color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  fullFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surface2,
+    marginTop: 4,
+  },
+  fullFileBtnText: {
+    color: COLORS.accent,
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '600',
+  },
+  profileDateHint: {
+    color: COLORS.muted,
+    fontSize: 10,
+    textAlign: 'center',
+    paddingBottom: 10,
+    marginTop: -4,
   },
   empty: {
     alignItems: 'center',

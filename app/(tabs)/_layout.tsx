@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Home, MessageCircle, BookOpen, Wind, BarChart2 } from 'lucide-react-native';
+import { Home, MessageCircle, BookOpen, Wind, BarChart2, Brain } from 'lucide-react-native';
 import { COLORS } from '../../lib/constants';
 
 export default function TabsLayout() {
@@ -65,6 +65,15 @@ export default function TabsLayout() {
           title: 'Einblicke',
           tabBarIcon: ({ color, size }) => (
             <BarChart2 size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="brain"
+        options={{
+          title: 'Gehirn',
+          tabBarIcon: ({ color, size }) => (
+            <Brain size={size} color={color} />
           ),
         }}
       />

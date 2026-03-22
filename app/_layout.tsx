@@ -10,7 +10,6 @@ import {
   shouldCheckForUpdate,
   isVersionSkipped,
   skipVersion,
-  openDownloadUrl,
 } from '../lib/updater';
 import type { ReleaseInfo } from '../lib/updater';
 import UpdateModal from '../components/UpdateModal';
@@ -95,6 +94,30 @@ export default function RootLayout() {
           name="exercises/affirmations"
           options={{ presentation: 'card', animation: 'slide_from_bottom' }}
         />
+        <Stack.Screen
+          name="brain/memory"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="brain/language"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="brain/logic"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="brain/reaction"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="brain/stats"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="patient-file"
+          options={{ presentation: 'card', animation: 'slide_from_right' }}
+        />
       </Stack>
 
       {updateRelease && (
@@ -104,10 +127,6 @@ export default function RootLayout() {
           onDismiss={() => setUpdateRelease(null)}
           onSkip={async () => {
             await skipVersion(updateRelease.version);
-            setUpdateRelease(null);
-          }}
-          onUpdate={async () => {
-            await openDownloadUrl(updateRelease.downloadUrl);
             setUpdateRelease(null);
           }}
         />
