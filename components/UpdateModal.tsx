@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Modal,
   BackHandler,
+  Alert,
 } from 'react-native';
 import Constants from 'expo-constants';
 import Animated, {
@@ -17,6 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowRight } from 'lucide-react-native';
 import { COLORS } from '../lib/constants';
+import { downloadAndInstallApk, openDownloadUrl } from '../lib/updater';
 import type { ReleaseInfo } from '../lib/updater';
 
 interface UpdateModalProps {
@@ -24,7 +26,6 @@ interface UpdateModalProps {
   release: ReleaseInfo;
   onDismiss: () => void;
   onSkip: () => void;
-  onUpdate: () => void;
 }
 
 function parseChangelog(markdown: string): React.ReactNode[] {
@@ -63,8 +64,10 @@ export default function UpdateModal({
   release,
   onDismiss,
   onSkip,
-  onUpdate,
 }: UpdateModalProps) {
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
   const translateY = useSharedValue(300);
   const opacity = useSharedValue(0);
 
@@ -88,6 +91,28 @@ export default function UpdateModal({
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
+
+  const handleUpdate = useCallback(async () => {
+    if (!release.downloadUrl) {
+      Alert.alert('Fehler', 'Keine Download-URL gefunden.');
+      return;
+    }
+    setDownloading(true);
+    setProgress(0);
+    try {
+      await downloadAndInstallApk(release.downloadUrl, setProgress);
+    } catch {
+      // Fallback: open browser
+      try {
+        await openDownloadUrl(release.downloadUrl);
+      } catch {
+        Alert.alert('Fehler', 'Download fehlgeschlagen. Bitte manuell updaten.');
+      }
+    } finally {
+      setDownloading(false);
+      setProgress(0);
+    }
+  }, [release.downloadUrl]);
 
   return (
     <Modal
@@ -132,18 +157,31 @@ export default function UpdateModal({
         </ScrollView>
 
         <Pressable
-          onPress={onUpdate}
+          onPress={handleUpdate}
+          disabled={downloading}
           style={styles.updateBtn}
           accessibilityLabel="App jetzt updaten"
           accessibilityRole="button"
         >
-          <Text style={styles.updateBtnText}>Jetzt updaten</Text>
+          {downloading ? (
+            <View style={styles.progressRow}>
+              <Text style={styles.updateBtnText}>
+                {progress > 0 ? `${progress}% wird geladen...` : 'Wird vorbereitet...'}
+              </Text>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${progress}%` as any }]} />
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.updateBtnText}>Jetzt updaten</Text>
+          )}
         </Pressable>
 
         {!release.isForced && (
           <>
             <Pressable
               onPress={onDismiss}
+              disabled={downloading}
               style={styles.laterBtn}
               accessibilityLabel="Später erinnern"
               accessibilityRole="button"
@@ -153,6 +191,7 @@ export default function UpdateModal({
 
             <Pressable
               onPress={onSkip}
+              disabled={downloading}
               style={styles.skipBtn}
               accessibilityLabel="Diese Version überspringen"
               accessibilityRole="button"
@@ -247,15 +286,34 @@ const styles = StyleSheet.create({
   updateBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 14,
-    height: 52,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   updateBtnText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  progressRow: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 2,
   },
   laterBtn: {
     alignItems: 'center',

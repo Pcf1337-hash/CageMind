@@ -370,7 +370,7 @@ export default function ChatScreen() {
         setIsTyping(false);
       }
     },
-    [rebuildSystemPrompt],
+    [rebuildSystemPrompt, pendingImage],
   );
 
   const handlePickImage = useCallback(async (useCamera: boolean) => {

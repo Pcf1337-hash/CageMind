@@ -13,13 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { setSetting } from '../../lib/database';
-import { setApiKey } from '../../lib/claude';
 import { requestNotificationPermissions, scheduleDailyReminder } from '../../lib/notifications';
 import { COLORS } from '../../lib/constants';
 
 export default function SetupScreen() {
   const [name, setName] = useState('');
-  const [apiKey, setApiKeyState] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -33,10 +31,6 @@ export default function SetupScreen() {
     try {
       await setSetting('user_name', name.trim());
       await setSetting('onboarding_done', 'true');
-
-      if (apiKey.trim()) {
-        await setApiKey(apiKey.trim());
-      }
 
       if (notificationsEnabled) {
         const granted = await requestNotificationPermissions();
@@ -84,26 +78,6 @@ export default function SetupScreen() {
               returnKeyType="next"
               maxLength={50}
               accessibilityLabel="Name eingeben"
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Anthropic API-Schlüssel (optional)</Text>
-            <Text style={styles.hint}>
-              Benötigst du für den Chat mit mir. Kostenlos unter console.anthropic.com
-              erstellen — du brauchst ihn aber nicht sofort.
-            </Text>
-            <TextInput
-              value={apiKey}
-              onChangeText={setApiKeyState}
-              placeholder="sk-ant-..."
-              placeholderTextColor={COLORS.muted}
-              style={styles.input}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              accessibilityLabel="API-Schlüssel eingeben"
             />
           </View>
 

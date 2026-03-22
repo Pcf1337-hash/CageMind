@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -94,6 +95,17 @@ export default function BoxBreathingScreen() {
     startTimeRef.current = Date.now();
     setIsRunning(true);
   };
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isRunning && !isFinished) {
+        handleStop();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [isRunning, isFinished]);
 
   const handleStop = () => {
     Alert.alert(

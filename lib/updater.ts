@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Linking from 'expo-linking';
 import semver from 'semver';
 
@@ -103,6 +105,62 @@ export async function checkForUpdate(): Promise<{
   return { hasUpdate, release: hasUpdate ? release : null, currentVersion };
 }
 
+export async function downloadAndInstallApk(
+  url: string,
+  onProgress?: (progress: number) => void
+): Promise<void> {
+  const destPath = FileSystem.cacheDirectory + 'cagemind-update.apk';
+
+  // Delete previous download if exists
+  const existing = await FileSystem.getInfoAsync(destPath);
+  if (existing.exists) {
+    await FileSystem.deleteAsync(destPath, { idempotent: true });
+  }
+
+  const downloadResumable = FileSystem.createDownloadResumable(
+    url,
+    destPath,
+    {},
+    (downloadProgress) => {
+      if (onProgress && downloadProgress.totalBytesExpectedToWrite > 0) {
+        const progress =
+          downloadProgress.totalBytesWritten /
+          downloadProgress.totalBytesExpectedToWrite;
+        onProgress(Math.round(progress * 100));
+      }
+    }
+  );
+
+  const result = await downloadResumable.downloadAsync();
+  if (!result?.uri) {
+    throw new Error('Download fehlgeschlagen');
+  }
+
+  // Convert file:// URI to content:// URI via FileProvider (required for Android 7+)
+  // file:///data/user/0/com.cagemind.app/cache/cagemind-update.apk
+  //  → content://com.cagemind.app.fileprovider/cache/cagemind-update.apk
+  const fileUri = result.uri;
+  const cacheDir = FileSystem.cacheDirectory ?? '';
+  // Strip file:// prefix and the app cache path prefix to get relative path
+  const relPath = fileUri.startsWith('file://')
+    ? fileUri.slice('file://'.length)
+    : fileUri;
+  const cacheDirPath = cacheDir.startsWith('file://')
+    ? cacheDir.slice('file://'.length)
+    : cacheDir;
+  const relative = relPath.startsWith(cacheDirPath)
+    ? relPath.slice(cacheDirPath.length)
+    : 'cagemind-update.apk';
+  const contentUri = `content://com.cagemind.app.fileprovider/cache/${relative}`;
+
+  await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+    data: contentUri,
+    flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+    type: 'application/vnd.android.package-archive',
+  });
+}
+
+// Fallback: open in browser
 export async function openDownloadUrl(url: string): Promise<void> {
   try {
     const canOpen = await Linking.canOpenURL(url);
