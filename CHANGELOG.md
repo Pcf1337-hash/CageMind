@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0] — 2026-03-22
+
+### Neu
+- Patientenakte: strukturiertes Profil im psychiatrischen Akten-Format mit Sektionen (Anamnese, Psychisches Bild, Auslöser & Stressoren, Ressourcen & Coping, Soziales & Persönliches, Verlaufsnotizen)
+- Eigener Screen "Patientenakte" mit stilvoller Ansicht: Patientenkopf, Stimmungsstatistiken, farbcodierte Sektionen
+- Akte wird automatisch nach jedem Gespräch und manuell über Einblicke aktualisiert
+- Zeitstempel der letzten Aktualisierung wird angezeigt
+- Direktlink zur Patientenakte aus den Einstellungen
+
+### Verbesserungen
+- Einstellungen: Sektion "KI-Gehirn" umbenannt zu "Patientenakte" mit "Akte ansehen"-Button
+- KI generiert jetzt strukturierte Fallnotizen statt einfacher Bullet-Points
+
 ## [1.1.0] — 2026-03-21
 
 ### Neu

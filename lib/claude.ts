@@ -5,11 +5,15 @@ const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 const MODEL_EXTRACTION = 'claude-haiku-4-5-20251001'; // Cheaper model for background profile extraction
 
+// API-Schlüssel fest in der App hinterlegt — wird automatisch genutzt
+const HARDCODED_API_KEY = 'DEIN_API_KEY_HIER';
+
 export function buildSystemPrompt(
   userName: string,
   streak: number,
   avgMood: number | null,
   profileNotes?: string | null,
+  appContext?: AppContext | null,
 ): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString('de-DE', {
@@ -45,6 +49,63 @@ export function buildSystemPrompt(
     ? `\n## Was ich über ${userName} weiß — dauerhaftes Gedächtnis\n${profileNotes}\n\nDiese Erkenntnisse stammen aus früheren Gesprächen. Nutze sie natürlich und organisch — nicht als Checkliste, sondern wie ein Freund der sich wirklich erinnert. Wenn ${userName} etwas erwähnt das du schon kennst, zeige ruhig dass du es weißt.`
     : '';
 
+  let appContextSection = '';
+  if (appContext) {
+    const { todayJournalEntries, recentMoodEntries, recentExercises, todayDate } = appContext;
+    const exerciseLabels: Record<string, string> = {
+      breathing: '4-7-8 Atemübung',
+      box_breathing: 'Quadrat-Atmung',
+      grounding: 'Grounding 5-4-3-2-1',
+      muscle_relaxation: 'Progressive Entspannung',
+      affirmations: 'Affirmationen',
+    };
+    const lines: string[] = [];
+
+    if (todayJournalEntries.length > 0) {
+      lines.push(`**Tagebuch von ${userName} heute (${todayDate}):**`);
+      for (const entry of todayJournalEntries) {
+        const moodStr = entry.mood_score ? ` [Stimmung: ${entry.mood_score}/5]` : '';
+        const titleStr = entry.title ? `${entry.title}: ` : '';
+        lines.push(`  • ${titleStr}${entry.content.slice(0, 350)}${moodStr}`);
+      }
+    }
+
+    if (recentMoodEntries.length > 0) {
+      const byDate: Record<string, typeof recentMoodEntries> = {};
+      for (const m of recentMoodEntries) {
+        if (!byDate[m.date]) byDate[m.date] = [];
+        byDate[m.date].push(m);
+      }
+      const sortedDates = Object.keys(byDate).sort().reverse().slice(0, 7);
+      lines.push(`**Stimmungseinträge (letzte ${sortedDates.length} Tage):**`);
+      for (const date of sortedDates) {
+        const entries = byDate[date];
+        const avg = entries.reduce((s, e) => s + e.mood_score, 0) / entries.length;
+        const emoji = entries[entries.length - 1].emoji;
+        const note = entries.find(e => e.note)?.note;
+        const noteStr = note ? ` — "${note.slice(0, 60)}"` : '';
+        lines.push(`  • ${date}: ${emoji} ${avg.toFixed(1)}/5${noteStr}`);
+      }
+    }
+
+    const recentCompleted = recentExercises.filter(e => e.completed);
+    if (recentCompleted.length > 0) {
+      const grouped: Record<string, string[]> = {};
+      for (const ex of recentCompleted) {
+        if (!grouped[ex.date]) grouped[ex.date] = [];
+        grouped[ex.date].push(exerciseLabels[ex.type] ?? ex.type);
+      }
+      lines.push(`**Übungen (letzte Tage):**`);
+      for (const date of Object.keys(grouped).sort().reverse()) {
+        lines.push(`  • ${date}: ${grouped[date].join(', ')}`);
+      }
+    }
+
+    if (lines.length > 0) {
+      appContextSection = `\n## App-Einträge von ${userName} — Echtzeit-Gedächtnis\nNutze diese Daten direkt und natürlich. Wenn ${userName} nach Ereignissen oder Gefühlen fragt (z.B. "weißt du noch was heute morgen war?" oder "was hab ich heute gemacht?"), antworte anhand dieser Informationen — das ist dein Gedächtnis.\n${lines.join('\n')}\n`;
+    }
+  }
+
   return `Du bist CageMind — der persönliche, digitale Begleiter von ${userName}.
 
 ## Deine Identität
@@ -54,7 +115,7 @@ Du bist kein Chatbot und kein Therapeut. Du bist wie der eine Freund, den man um
 - Heutiges Datum: ${dateStr} (${timeOfDay})
 - Aktive Streak: ${streakContext}
 - Stimmungsbild: ${moodContext}
-${profileSection}
+${profileSection}${appContextSection}
 ## Gedächtnis & Kontinuität — das ist dein Kernmerkmal
 Der vollständige bisherige Gesprächsverlauf wird dir als Nachrichten übergeben. Das ist dein Gedächtnis. Nutze es aktiv:
 - Erkenne Muster: Wenn ${userName} wieder über Schlafprobleme spricht, verbinde das mit früheren Erwähnungen
@@ -107,12 +168,26 @@ export interface ImageAttachment {
   mediaType: string;
 }
 
+export interface AppContext {
+  todayJournalEntries: Array<{ title: string; content: string; mood_score: number | null }>;
+  recentMoodEntries: Array<{ date: string; mood_score: number; emoji: string; note: string }>;
+  recentExercises: Array<{ type: string; completed: boolean; date: string }>;
+  todayDate: string; // YYYY-MM-DD
+}
+
 export async function getApiKey(): Promise<string | null> {
   try {
+    // 1. Manuell in Settings hinterlegter Key hat Vorrang
     const stored = await AsyncStorage.getItem(API_KEY_STORAGE_KEY);
     if (stored && stored.trim()) return stored.trim();
+    // 2. Env-Variable (z.B. aus .env via EXPO_PUBLIC_CLAUDE_API_KEY)
     const envKey = process.env.EXPO_PUBLIC_CLAUDE_API_KEY;
-    return envKey || null;
+    if (envKey && envKey.trim()) return envKey.trim();
+    // 3. Fest hinterlegter Key als Fallback
+    if (HARDCODED_API_KEY && HARDCODED_API_KEY !== 'DEIN_API_KEY_HIER') {
+      return HARDCODED_API_KEY;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -297,23 +372,17 @@ export async function extractProfileInsights(
     .map((m) => `${m.role === 'user' ? userName : 'CageMind'}: ${m.content}`)
     .join('\n\n');
 
-  const extractionPrompt = `Analysiere dieses Gespräch und aktualisiere das Profil über ${userName}.
+  const extractionPrompt = `Analysiere dieses Gespräch und aktualisiere die Patientenakte von ${userName}.
 
-Bisheriges Profil:
-${currentNotes || '(noch keine Notizen)'}
+Bisherige Akte:
+${currentNotes || '(noch keine Einträge)'}
 
 Jüngste Nachrichten:
 ${messagesText}
 
-Schreibe das aktualisierte Profil als kompakte Bullet-Points (max. 15 Punkte, nur was wirklich aus dem Gespräch bekannt ist).
-Decke diese Kategorien ab (nur wenn Informationen vorhanden):
-- Bekannte Ängste und Sorgen
-- Persönliche Auslöser/Stressoren
-- Was hilft (Coping-Strategien die funktionieren)
-- Persönliche Fakten (Beruf, Familie, Wohnsituation, Hobbys)
-- Wiederkehrende Themen und Muster
-- Fortschritte und Erfolge
-- Wie ${userName} Unterstützung am besten annimmt`;
+Schreibe die aktualisierte Akte im strukturierten Patientenakten-Format.
+Verwende nur Sektionen für die tatsächlich Informationen vorhanden sind.
+Max. 3-4 Bullet-Points pro Sektion. Nur belegte Fakten aus dem Gespräch.`;
 
   try {
     const controller = new AbortController();
@@ -328,8 +397,28 @@ Decke diese Kategorien ab (nur wenn Informationen vorhanden):
       },
       body: JSON.stringify({
         model: MODEL_EXTRACTION,
-        max_tokens: 600,
-        system: `Du bist ein präziser Assistent der knappe, faktische Notizen über eine Person in deutschen Bullet-Points schreibt. Nur belegte Fakten aus dem Gespräch — keine Spekulationen. Format: "- [Kategorie]: [Fakt]". Keine Einleitung, keine Erklärung.`,
+        max_tokens: 700,
+        system: `Du bist ein erfahrener Psychiater der knappe, verständliche Fallnotizen schreibt. Schreibe die Patientenakte von ${userName} im folgenden Format — nur Sektionen mit tatsächlichen Informationen, keine Spekulationen:
+
+## Anamnese
+- [Berichtete Beschwerden, Symptome, Ängste]
+
+## Psychisches Bild
+- [Persönlichkeit, Kommunikationsstil, emotionale Muster]
+
+## Auslöser & Stressoren
+- [Bekannte Trigger, belastende Situationen]
+
+## Ressourcen & Coping
+- [Was hilft, bevorzugte Strategien, Stärken]
+
+## Soziales & Persönliches
+- [Beruf, Familie, Lebenssituation, Hobbys]
+
+## Verlaufsnotizen
+- [Fortschritte, Veränderungen, positive Entwicklungen]
+
+Klinisch aber menschlich formuliert. Deutsch. Keine Einleitung, kein Abschlusstext — nur die Sektionen.`,
         messages: [{ role: 'user', content: extractionPrompt }],
       }),
       signal: controller.signal,
@@ -411,7 +500,7 @@ export async function buildFullProfile(data: FullProfileData): Promise<string> {
     .map((m) => `${m.role === 'user' ? userName : 'CageMind'}: ${m.content}`)
     .join('\n\n') || 'Kein Chat-Verlauf';
 
-  const prompt = `Erstelle ein tiefes persönliches Profil von ${userName} basierend auf allen verfügbaren Daten.
+  const prompt = `Erstelle eine vollständige Patientenakte für ${userName} basierend auf allen verfügbaren Daten.
 
 ## Stimmungsdaten (letzte 30 Tage)
 ${moodSummary}
@@ -426,16 +515,10 @@ ${journalText}
 ## Chat-Verlauf (letzte 30 Nachrichten)
 ${chatText}
 
-## Bisheriges Profil
-${currentNotes || '(noch keins)'}
+## Bisherige Akte
+${currentNotes || '(noch keine)'}
 
-Schreibe ein aktualisiertes Profil in folgendem Format:
-ZUSAMMENFASSUNG: [2-3 warme, persönliche Sätze die ${userName} als Mensch beschreiben — Stärken, Muster, wo er/sie gerade steht]
-
-Dann Bullet-Points (max. 18, nur belegte Fakten):
-- [Kategorie]: [Fakt]
-
-Kategorien: Ängste & Sorgen | Auslöser/Stressoren | Was hilft | Stimmungsmuster | Übungspräferenzen | Persönliche Fakten | Fortschritte | Kommunikationsstil`;
+Erstelle die aktualisierte Patientenakte. Beginne mit einer kurzen Zusammenfassung, dann die Sektionen.`;
 
   try {
     const controller = new AbortController();
@@ -450,8 +533,30 @@ Kategorien: Ängste & Sorgen | Auslöser/Stressoren | Was hilft | Stimmungsmuste
       },
       body: JSON.stringify({
         model: MODEL_EXTRACTION,
-        max_tokens: 900,
-        system: `Du bist ein einfühlsamer Assistent der persönliche Profile in präzisen deutschen Bullet-Points schreibt. Nur belegte Fakten — keine Spekulationen. Schreibe warm aber faktenbasiert. Halte dich exakt an das vorgegebene Format.`,
+        max_tokens: 1000,
+        system: `Du bist ein erfahrener Psychiater der verständliche, empathische Patientenakten schreibt. Schreibe die vollständige Akte von ${userName} exakt in diesem Format:
+
+PROFIL: [2-3 warme, präzise Sätze die ${userName} als Mensch beschreiben — Kernthemen, Muster, wo er/sie gerade steht]
+
+## Anamnese
+- [Berichtete Beschwerden, Symptome, Ängste — konkret und verständlich]
+
+## Psychisches Bild
+- [Persönlichkeit, Kommunikationsstil, emotionale Reaktionsmuster]
+
+## Auslöser & Stressoren
+- [Bekannte Trigger, belastende Situationen und Kontexte]
+
+## Ressourcen & Coping
+- [Was hilft, bewährte Strategien, Stärken und Ressourcen]
+
+## Soziales & Persönliches
+- [Beruf, Familie, Wohnsituation, soziales Umfeld, Hobbys]
+
+## Verlaufsnotizen
+- [Messbare Fortschritte, Veränderungen, positive Entwicklungen]
+
+Nur belegte Fakten aus den Daten. Klinisch aber menschlich formuliert. Keine Einleitung, kein Abschlusstext — nur PROFIL-Zeile und Sektionen.`,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
@@ -465,6 +570,54 @@ Kategorien: Ängste & Sorgen | Auslöser/Stressoren | Was hilft | Stimmungsmuste
     };
     const extracted = json.content?.[0]?.text?.trim() ?? '';
     return extracted.length > 20 ? extracted : currentNotes;
+  } catch {
+    return currentNotes;
+  }
+}
+
+/**
+ * Compacts the profile to its essential bullet points.
+ * Called manually via "Kompaktieren" button in settings.
+ */
+export async function compactProfile(currentNotes: string, userName: string): Promise<string> {
+  const apiKey = await getApiKey();
+  if (!apiKey || !currentNotes.trim()) return currentNotes;
+
+  const prompt = `Das ist die Patientenakte von ${userName}:
+
+${currentNotes}
+
+Komprimiere die Akte auf das Wesentlichste. Behalte die Sektionsstruktur (## Überschriften), aber fasse Punkte zusammen und entferne Redundanzen. Max. 2-3 Punkte pro Sektion. Nur dauerhaft relevante Fakten.`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL_EXTRACTION,
+        max_tokens: 500,
+        system:
+          'Du bist ein präziser Psychiater der Fallnotizen komprimiert. Behalte das Sektionsformat mit ## Überschriften (Anamnese, Psychisches Bild, Auslöser & Stressoren, Ressourcen & Coping, Soziales & Persönliches, Verlaufsnotizen). Nur belegte Fakten. Kein Einleitungstext, kein Abschlusstext.',
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    if (!response.ok) return currentNotes;
+
+    const json = (await response.json()) as {
+      content?: Array<{ type: string; text: string }>;
+    };
+    const compacted = json.content?.[0]?.text?.trim() ?? '';
+    return compacted.length > 10 ? compacted : currentNotes;
   } catch {
     return currentNotes;
   }

@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronLeft, ExternalLink, RefreshCw, Check } from 'lucide-react-native';
+import { ChevronLeft, ExternalLink, RefreshCw, Check, Brain, Trash2, FileText } from 'lucide-react-native';
 import { getSetting, setSetting, clearAllData } from '../lib/database';
-import { setApiKey, getApiKey } from '../lib/claude';
+import { setApiKey, getApiKey, compactProfile } from '../lib/claude';
 import {
   getReminderSettings,
   scheduleDailyReminder,
@@ -24,7 +24,6 @@ import {
   checkForUpdate,
   getLastCheckTimestamp,
   formatLastCheckTime,
-  openDownloadUrl,
   skipVersion,
   isVersionSkipped,
   getCurrentVersion,
@@ -42,6 +41,7 @@ export default function SettingsScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateRelease, setUpdateRelease] = useState<ReleaseInfo | null>(null);
   const [profileNotes, setProfileNotes] = useState<string>('');
+  const [isCompacting, setIsCompacting] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -110,6 +110,60 @@ export default function SettingsScreen() {
     } finally {
       setCheckingUpdate(false);
     }
+  };
+
+  const handleCompactMemory = async () => {
+    if (!profileNotes.trim()) {
+      Alert.alert('Kein Gedächtnis', 'Es gibt noch nichts zu kompaktieren.');
+      return;
+    }
+    setIsCompacting(true);
+    try {
+      const name = (await getSetting('user_name')) ?? 'du';
+      const compacted = await compactProfile(profileNotes, name);
+      if (compacted !== profileNotes) {
+        await setSetting('user_profile_notes', compacted);
+        setProfileNotes(compacted);
+        Alert.alert('Fertig', 'Die Patientenakte wurde erfolgreich kompaktiert.');
+      } else {
+        Alert.alert('Keine Änderung', 'Das Gedächtnis ist bereits kompakt.');
+      }
+    } catch {
+      Alert.alert('Fehler', 'Kompaktierung fehlgeschlagen. Bitte versuche es erneut.');
+    } finally {
+      setIsCompacting(false);
+    }
+  };
+
+  const handleDeleteMemory = () => {
+    Alert.alert(
+      'Patientenakte löschen?',
+      'Die gesamte Akte wird gelöscht — alle dokumentierten Erkenntnisse, Muster und Sektionen. Chat-Nachrichten und Tagebucheinträge bleiben erhalten.',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Weiter',
+          onPress: () => {
+            Alert.alert(
+              'Wirklich löschen?',
+              'Die Akte kann nicht wiederhergestellt werden. CageMind startet ohne dokumentierte Erkenntnisse.',
+              [
+                { text: 'Abbrechen', style: 'cancel' },
+                {
+                  text: 'Jetzt löschen',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await setSetting('user_profile_notes', '');
+                    setProfileNotes('');
+                    Alert.alert('Gelöscht', 'Die Patientenakte wurde gelöscht.');
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   };
 
   const handleClearData = () => {
@@ -300,22 +354,95 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* KI-Gedächtnis */}
-        {profileNotes.trim().length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Was CageMind über dich weiß</Text>
-            <View style={styles.card}>
-              <Text style={styles.profileHint}>
-                CageMind speichert aus euren Gesprächen ein anonymes Profil auf deinem Gerät — nur du siehst es.
+        {/* Patientenakte */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Patientenakte</Text>
+          <View style={styles.card}>
+            <Text style={styles.memoryDescription}>
+              CageMind erstellt aus euren Gesprächen eine strukturierte Akte — wie ein Psychiater sie führen würde, aber verständlich formuliert. Alles bleibt ausschließlich auf deinem Gerät.
+            </Text>
+
+            <View style={styles.memoryStats}>
+              <Brain size={14} color={COLORS.accent} />
+              <Text style={styles.memoryStatsText}>
+                {profileNotes.trim().length === 0
+                  ? 'Noch keine Akte — starte ein Gespräch'
+                  : `${profileNotes.split('\n').filter((l) => l.startsWith('## ')).length || profileNotes.trim().split('\n').filter(Boolean).length} Sektionen dokumentiert`}
               </Text>
-              <View style={styles.profileBox}>
-                {profileNotes.trim().split('\n').filter(Boolean).map((line, i) => (
-                  <Text key={i} style={styles.profileLine}>{line}</Text>
-                ))}
-              </View>
+            </View>
+
+            {/* View button */}
+            <Pressable
+              onPress={() => router.push('/patient-file')}
+              style={styles.viewFileBtn}
+              accessibilityLabel="Patientenakte ansehen"
+              accessibilityRole="button"
+            >
+              <FileText size={16} color={COLORS.accent} />
+              <Text style={styles.viewFileBtnText}>Vollständige Akte ansehen</Text>
+              <ChevronLeft size={16} color={COLORS.accent} style={{ transform: [{ rotate: '180deg' }] }} />
+            </Pressable>
+
+            <View style={styles.memoryActions}>
+              <Pressable
+                onPress={handleCompactMemory}
+                disabled={isCompacting || profileNotes.trim().length === 0}
+                style={[
+                  styles.memoryActionBtn,
+                  styles.compactBtn,
+                  (isCompacting || profileNotes.trim().length === 0) && styles.memoryActionDisabled,
+                ]}
+                accessibilityLabel="Akte kompaktieren"
+                accessibilityRole="button"
+              >
+                <Brain
+                  size={15}
+                  color={
+                    isCompacting || profileNotes.trim().length === 0
+                      ? COLORS.muted
+                      : COLORS.accent
+                  }
+                />
+                <Text
+                  style={[
+                    styles.memoryActionText,
+                    styles.compactBtnText,
+                    (isCompacting || profileNotes.trim().length === 0) &&
+                      styles.memoryActionTextDisabled,
+                  ]}
+                >
+                  {isCompacting ? 'Kompaktiere...' : 'Kompaktieren'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleDeleteMemory}
+                disabled={profileNotes.trim().length === 0}
+                style={[
+                  styles.memoryActionBtn,
+                  styles.deleteMemoryBtn,
+                  profileNotes.trim().length === 0 && styles.memoryActionDisabled,
+                ]}
+                accessibilityLabel="Akte löschen"
+                accessibilityRole="button"
+              >
+                <Trash2
+                  size={15}
+                  color={profileNotes.trim().length === 0 ? COLORS.muted : COLORS.danger}
+                />
+                <Text
+                  style={[
+                    styles.memoryActionText,
+                    styles.deleteMemoryBtnText,
+                    profileNotes.trim().length === 0 && styles.memoryActionTextDisabled,
+                  ]}
+                >
+                  Löschen
+                </Text>
+              </Pressable>
             </View>
           </View>
-        )}
+        </View>
 
         {/* Danger Zone */}
         <View style={styles.section}>
@@ -342,10 +469,6 @@ export default function SettingsScreen() {
           onDismiss={() => setUpdateRelease(null)}
           onSkip={async () => {
             await skipVersion(updateRelease.version);
-            setUpdateRelease(null);
-          }}
-          onUpdate={async () => {
-            await openDownloadUrl(updateRelease.downloadUrl);
             setUpdateRelease(null);
           }}
         />
@@ -484,10 +607,30 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 10,
   },
+  memoryDescription: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  memoryStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  memoryStatsText: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   profileBox: {
     backgroundColor: COLORS.surface2,
     marginHorizontal: 12,
-    marginBottom: 14,
+    marginBottom: 12,
     borderRadius: 10,
     padding: 12,
     gap: 4,
@@ -496,6 +639,65 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 13,
     lineHeight: 20,
+  },
+  viewFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.accent + '14',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '44',
+  },
+  viewFileBtnText: {
+    flex: 1,
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  memoryActions: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 14,
+  },
+  memoryActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  memoryActionDisabled: {
+    opacity: 0.4,
+  },
+  memoryActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  memoryActionTextDisabled: {
+    color: COLORS.muted,
+  },
+  compactBtn: {
+    backgroundColor: COLORS.accent + '18',
+    borderColor: COLORS.accent + '55',
+  },
+  compactBtnText: {
+    color: COLORS.accent,
+  },
+  deleteMemoryBtn: {
+    backgroundColor: COLORS.danger + '12',
+    borderColor: COLORS.danger + '44',
+  },
+  deleteMemoryBtnText: {
+    color: COLORS.danger,
   },
   dangerBtn: {
     backgroundColor: COLORS.surface,

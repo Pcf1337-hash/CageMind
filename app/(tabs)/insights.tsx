@@ -164,8 +164,9 @@ export default function InsightsScreen() {
 
       if (updated !== (currentNotes ?? '')) {
         await setSetting('user_profile_notes', updated);
+        await setSetting('profile_last_updated', new Date().toISOString());
         setProfileNotes(updated);
-        Alert.alert('Profil aktualisiert', 'CageMind hat dein Profil auf Basis aller Daten neu aufgebaut.');
+        Alert.alert('Akte aktualisiert', 'CageMind hat deine Patientenakte auf Basis aller Daten neu erstellt.');
       } else {
         Alert.alert('Kein Update', 'Das Profil ist bereits aktuell oder es gibt noch zu wenig Daten.');
       }

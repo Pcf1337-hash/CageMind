@@ -28,6 +28,8 @@ import {
   setSetting,
   getStreak,
   getMoodEntriesByDateRange,
+  getJournalEntries,
+  getExerciseSessions,
 } from '../../lib/database';
 import {
   sendMessage,
@@ -37,6 +39,7 @@ import {
   extractProfileInsights,
   type Message,
   type ImageAttachment,
+  type AppContext,
 } from '../../lib/claude';
 import { COLORS, getLocalDateString } from '../../lib/constants';
 
@@ -87,6 +90,7 @@ export default function ChatScreen() {
   const userMessageCountRef = useRef<number>(0);
   const userNameRef = useRef<string>('');
   const streamRafRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const appContextRef = useRef<AppContext | null>(null);
 
   const rebuildSystemPrompt = useCallback(() => {
     systemPromptRef.current = buildSystemPrompt(
@@ -94,6 +98,7 @@ export default function ChatScreen() {
       streakRef.current,
       avgMoodRef.current,
       profileNotesRef.current,
+      appContextRef.current,
     );
   }, []);
 
@@ -123,7 +128,30 @@ export default function ChatScreen() {
       const profileNotes = (await getSetting('user_profile_notes')) ?? '';
       profileNotesRef.current = profileNotes;
 
-      // Build enriched system prompt with profile
+      // Build app context: today's journal entries + recent mood + recent exercises
+      const todayDate = getLocalDateString();
+      const threeDaysAgo = getLocalDateString(new Date(Date.now() - 3 * 86400000));
+      const [allJournal, allExercises] = await Promise.all([
+        getJournalEntries(),
+        getExerciseSessions(),
+      ]);
+      appContextRef.current = {
+        todayJournalEntries: allJournal
+          .filter((j) => j.date === todayDate)
+          .map((j) => ({ title: j.title, content: j.content, mood_score: j.mood_score })),
+        recentMoodEntries: moodEntries.map((m) => ({
+          date: m.date,
+          mood_score: m.mood_score,
+          emoji: m.emoji,
+          note: m.note,
+        })),
+        recentExercises: allExercises
+          .filter((e) => e.date >= threeDaysAgo)
+          .map((e) => ({ type: e.type, completed: e.completed, date: e.date })),
+        todayDate,
+      };
+
+      // Build enriched system prompt with profile and app context
       rebuildSystemPrompt();
 
       // Load full chat history from DB (up to 150 messages for memory)
@@ -187,6 +215,29 @@ export default function ChatScreen() {
           scores.length > 0
             ? scores.reduce((a, b) => a + b, 0) / scores.length
             : null;
+
+        // Refresh app context on focus (user may have added a journal entry or mood)
+        const todayDate = getLocalDateString();
+        const threeDaysAgo = getLocalDateString(new Date(Date.now() - 3 * 86400000));
+        const [allJournal, allExercises] = await Promise.all([
+          getJournalEntries(),
+          getExerciseSessions(),
+        ]);
+        appContextRef.current = {
+          todayJournalEntries: allJournal
+            .filter((j) => j.date === todayDate)
+            .map((j) => ({ title: j.title, content: j.content, mood_score: j.mood_score })),
+          recentMoodEntries: moodEntries.map((m) => ({
+            date: m.date,
+            mood_score: m.mood_score,
+            emoji: m.emoji,
+            note: m.note,
+          })),
+          recentExercises: allExercises
+            .filter((e) => e.date >= threeDaysAgo)
+            .map((e) => ({ type: e.type, completed: e.completed, date: e.date })),
+          todayDate,
+        };
         rebuildSystemPrompt();
       } catch {
         // silent
@@ -297,6 +348,7 @@ export default function ChatScreen() {
               if (updated && updated !== currentNotes) {
                 profileNotesRef.current = updated;
                 await setSetting('user_profile_notes', updated);
+                await setSetting('profile_last_updated', new Date().toISOString());
                 rebuildSystemPrompt();
               }
             })
