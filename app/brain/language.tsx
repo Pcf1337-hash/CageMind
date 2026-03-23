@@ -17,8 +17,9 @@ import {
   setDomainProgress,
   insertBrainAttempt,
   incrementMissionProgress,
+  getPersonalBest,
 } from '../../lib/database';
-import { calculateNextLevel, calculateXP, ANAGRAM_WORDS } from '../../lib/brainTraining';
+import { calculateNextLevel, calculateXP, ANAGRAM_WORDS, runBadgeChecksAfterSession } from '../../lib/brainTraining';
 
 const ROUNDS_PER_SESSION = 5;
 const TIME_BY_LEVEL = [0, 30, 20, 15, 12, 10];
@@ -62,6 +63,15 @@ export default function LanguageScreen() {
   const [running, setRunning] = useState(true);
   const [finished, setFinished] = useState(false);
   const [xpEarned, setXpEarned] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [sessionMaxCombo, setSessionMaxCombo] = useState(0);
+  const [sessionIsPerfect, setSessionIsPerfect] = useState(false);
+  const [isNewPB, setIsNewPB] = useState(false);
+  const [prevPBAccuracy, setPrevPBAccuracy] = useState<number | null>(null);
+  const [newBadgesCount, setNewBadgesCount] = useState(0);
+  const maxComboRef = useRef(0);
+  const comboRef = useRef(0);
+  const pbRef = useRef<number | null>(null);
   const usedWords = useRef(new Set<string>());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,6 +101,11 @@ export default function LanguageScreen() {
   }, []);
 
   useEffect(() => {
+    // Load PB before session starts
+    getPersonalBest('language', 'anagram').then(pb => {
+      pbRef.current = pb?.bestAccuracy ?? null;
+      setPrevPBAccuracy(pb?.bestAccuracy ?? null);
+    });
     loadRound();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -106,6 +121,14 @@ export default function LanguageScreen() {
 
   const advanceRound = (wasCorrect: boolean) => {
     const newCorrect = wasCorrect ? correct + 1 : correct;
+    if (wasCorrect) {
+      comboRef.current += 1;
+      if (comboRef.current > maxComboRef.current) maxComboRef.current = comboRef.current;
+      setCombo(comboRef.current);
+    } else {
+      comboRef.current = 0;
+      setCombo(0);
+    }
     if (round >= ROUNDS_PER_SESSION) {
       finishSession(newCorrect);
     } else {
@@ -120,19 +143,29 @@ export default function LanguageScreen() {
     setRunning(false);
     setFinished(true);
     const today = getLocalDateString(new Date());
+    const mc = maxComboRef.current;
+    const perfect = finalCorrect === ROUNDS_PER_SESSION;
+    const currentAccuracy = finalCorrect / ROUNDS_PER_SESSION;
     const nextLvl = calculateNextLevel(level, finalCorrect, ROUNDS_PER_SESSION, 8000, 'language');
-    const xp = calculateXP(finalCorrect, ROUNDS_PER_SESSION, level, false);
+    const xp = calculateXP(finalCorrect, ROUNDS_PER_SESSION, level, false, mc, perfect);
     setXpEarned(xp);
+    setSessionMaxCombo(mc);
+    setSessionIsPerfect(perfect);
+    const newPB = pbRef.current === null || currentAccuracy > pbRef.current;
+    setIsNewPB(newPB);
+    const attempt = {
+      domain: 'language' as const, exercise_type: 'anagram',
+      difficulty_level: level, score: finalCorrect,
+      correct_count: finalCorrect, total_count: ROUNDS_PER_SESSION,
+      xp_earned: xp, max_combo: mc, is_perfect: perfect ? 1 : 0, date: today,
+    };
     await Promise.all([
-      insertBrainAttempt({
-        domain: 'language', exercise_type: 'anagram',
-        difficulty_level: level, score: finalCorrect,
-        correct_count: finalCorrect, total_count: ROUNDS_PER_SESSION,
-        xp_earned: xp, date: today,
-      }),
+      insertBrainAttempt(attempt),
       setDomainProgress('language', nextLvl, xp, finalCorrect),
       incrementMissionProgress(today),
     ]);
+    const nb = await runBadgeChecksAfterSession(attempt);
+    setNewBadgesCount(nb.length);
   };
 
   const handleLetterTap = (shuffleIdx: number) => {
@@ -180,14 +213,42 @@ export default function LanguageScreen() {
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.resultContainer}>
-          <Text style={styles.resultEmoji}>{correct >= ROUNDS_PER_SESSION * 0.8 ? '🌟' : '💪'}</Text>
-          <Text style={styles.resultTitle}>{correct >= ROUNDS_PER_SESSION * 0.8 ? 'Ausgezeichnet!' : 'Gute Übung!'}</Text>
+          <Text style={styles.resultEmoji}>{sessionIsPerfect ? '🏆' : correct >= ROUNDS_PER_SESSION * 0.8 ? '🌟' : '💪'}</Text>
+          <Text style={styles.resultTitle}>{sessionIsPerfect ? 'Perfekt!' : correct >= ROUNDS_PER_SESSION * 0.8 ? 'Ausgezeichnet!' : 'Gute Übung!'}</Text>
           <Text style={styles.resultSub}>{correct} / {ROUNDS_PER_SESSION} Anagramme gelöst</Text>
           <View style={styles.xpBadge}>
             <Text style={styles.xpBadgeText}>+{xpEarned} XP</Text>
           </View>
+          {sessionIsPerfect && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent2 + '33' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent2 }]}>💯 Perfekte Runde! +25 XP</Text>
+            </View>
+          )}
+          {sessionMaxCombo >= 3 && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.warm + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.warm }]}>
+                🔥 Bester Combo: x{sessionMaxCombo}{sessionMaxCombo >= 10 ? ' +20 XP' : sessionMaxCombo >= 5 ? ' +10 XP' : ' +5 XP'}
+              </Text>
+            </View>
+          )}
+          {isNewPB ? (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent }]}>🏆 Neuer Persönlicher Rekord!</Text>
+            </View>
+          ) : prevPBAccuracy !== null && (
+            <Text style={styles.pbText}>Dein Rekord: {Math.round(prevPBAccuracy * 100)}%</Text>
+          )}
+          {newBadgesCount > 0 && (
+            <Text style={styles.badgeUnlock}>🎉 {newBadgesCount} neue{newBadgesCount > 1 ? ' Badges' : 's Badge'} freigeschaltet!</Text>
+          )}
           <Pressable
-            onPress={() => { usedWords.current = new Set(); setRound(1); setCorrect(0); setFinished(false); setRunning(true); loadRound(); }}
+            onPress={() => {
+              usedWords.current = new Set();
+              comboRef.current = 0; maxComboRef.current = 0;
+              setRound(1); setCorrect(0); setCombo(0); setFinished(false); setRunning(true);
+              getPersonalBest('language', 'anagram').then(pb => { pbRef.current = pb?.bestAccuracy ?? null; setPrevPBAccuracy(pb?.bestAccuracy ?? null); });
+              loadRound();
+            }}
             style={styles.playAgainBtn}
             accessibilityRole="button"
             accessibilityLabel="Nochmal spielen"
@@ -219,6 +280,12 @@ export default function LanguageScreen() {
         <Text style={styles.statPill}>Level {level}</Text>
         <Text style={styles.statPill}>Runde {round} / {ROUNDS_PER_SESSION}</Text>
         <Text style={styles.statPill}>{correct} richtig</Text>
+        {combo >= 3
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '33', color: COLORS.warm }]}>🔥 x{combo}</Text>
+          : combo >= 2
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '22', color: COLORS.warm }]}>x{combo}</Text>
+          : null
+        }
       </View>
 
       {/* Progress bar */}
@@ -430,4 +497,8 @@ const styles = StyleSheet.create({
   playAgainText: { color: COLORS.bg, fontSize: 16, fontWeight: '700' },
   backLink: { paddingVertical: 8 },
   backLinkText: { color: COLORS.muted, fontSize: 14 },
+  bonusBadge: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center' },
+  bonusText: { fontSize: 14, fontWeight: '700' },
+  pbText: { color: COLORS.muted, fontSize: 13 },
+  badgeUnlock: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
 });

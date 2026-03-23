@@ -24,6 +24,7 @@ import {
   setDomainProgress,
   insertBrainAttempt,
   incrementMissionProgress,
+  getPersonalBest,
 } from '../../lib/database';
 import {
   calculateNextLevel,
@@ -31,6 +32,7 @@ import {
   generateStroopRound,
   STROOP_COLORS,
   StroopRound,
+  runBadgeChecksAfterSession,
 } from '../../lib/brainTraining';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -55,6 +57,17 @@ export default function ReactionScreen() {
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [xpEarned, setXpEarned] = useState(0);
+  // Extras
+  const [sessionMaxCombo, setSessionMaxCombo] = useState(0);
+  const [sessionIsPerfect, setSessionIsPerfect] = useState(false);
+  const [isNewPB, setIsNewPB] = useState(false);
+  const [prevPBAccuracy, setPrevPBAccuracy] = useState<number | null>(null);
+  const [newBadgesCount, setNewBadgesCount] = useState(0);
+  const tapComboRef = useRef(0);
+  const tapMaxComboRef = useRef(0);
+  const stroopComboRef = useRef(0);
+  const stroopMaxComboRef = useRef(0);
+  const pbRef = useRef<number | null>(null);
 
   // Tap target state
   const [target, setTarget] = useState<TargetState>(null);
@@ -121,6 +134,7 @@ export default function ReactionScreen() {
 
     if (isDecoy) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      tapComboRef.current = 0;
       const newMisses = tapMisses + 1;
       setTapMisses(newMisses);
       const newLeft = tapsLeft - 1;
@@ -128,6 +142,8 @@ export default function ReactionScreen() {
       setTimeout(() => showNextTarget(level, newLeft, tapHits, newMisses, responseTimes), 400);
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      tapComboRef.current += 1;
+      if (tapComboRef.current > tapMaxComboRef.current) tapMaxComboRef.current = tapComboRef.current;
       const newTimes = [...responseTimes, rt];
       setResponseTimes(newTimes);
       const newHits = tapHits + 1;
@@ -142,20 +158,31 @@ export default function ReactionScreen() {
     setRunning(false);
     setFinished(true);
     const today = getLocalDateString(new Date());
+    const mc = tapMaxComboRef.current;
+    const perfect = hits === TAP_TARGETS && misses === 0;
+    const currentAccuracy = hits / TAP_TARGETS;
     const avgMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 1000;
     const nextLvl = calculateNextLevel(lvl, hits, TAP_TARGETS, avgMs, 'reaction');
-    const xp = calculateXP(hits, TAP_TARGETS, lvl, false);
+    const xp = calculateXP(hits, TAP_TARGETS, lvl, false, mc, perfect);
     setXpEarned(xp);
+    setSessionMaxCombo(mc);
+    setSessionIsPerfect(perfect);
+    const newPB = pbRef.current === null || currentAccuracy > pbRef.current;
+    setIsNewPB(newPB);
+    const attempt = {
+      domain: 'reaction' as const, exercise_type: 'tap_target',
+      difficulty_level: lvl, score: hits,
+      correct_count: hits, total_count: TAP_TARGETS,
+      avg_response_ms: avgMs, xp_earned: xp,
+      max_combo: mc, is_perfect: perfect ? 1 : 0, date: today,
+    };
     await Promise.all([
-      insertBrainAttempt({
-        domain: 'reaction', exercise_type: 'tap_target',
-        difficulty_level: lvl, score: hits,
-        correct_count: hits, total_count: TAP_TARGETS,
-        avg_response_ms: avgMs, xp_earned: xp, date: today,
-      }),
+      insertBrainAttempt(attempt),
       setDomainProgress('reaction', nextLvl, xp, hits),
       incrementMissionProgress(today),
     ]);
+    const nb = await runBadgeChecksAfterSession(attempt);
+    setNewBadgesCount(nb.length);
   };
 
   // ─── STROOP MODE ───────────────────────────────────────────────────
@@ -199,11 +226,14 @@ export default function ReactionScreen() {
     setStroopFeedback(isCorrect ? 'correct' : 'wrong');
     if (isCorrect) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      stroopComboRef.current += 1;
+      if (stroopComboRef.current > stroopMaxComboRef.current) stroopMaxComboRef.current = stroopComboRef.current;
       stroopHitsRef.current += 1;
       stroopResponseTimes.current.push(rt);
       setStroopHits(h => h + 1);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      stroopComboRef.current = 0;
     }
     stroopFeedbackRef.current = setTimeout(() => {
       const newLeft = stroopLeft - 1;
@@ -218,21 +248,32 @@ export default function ReactionScreen() {
     setRunning(false);
     setFinished(true);
     const times = stroopResponseTimes.current;
+    const mc = stroopMaxComboRef.current;
+    const perfect = hits === STROOP_ROUNDS;
+    const currentAccuracy = hits / STROOP_ROUNDS;
     const avgMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 2000;
     const today = getLocalDateString(new Date());
     const nextLvl = calculateNextLevel(lvl, hits, STROOP_ROUNDS, avgMs, 'reaction');
-    const xp = calculateXP(hits, STROOP_ROUNDS, lvl, false);
+    const xp = calculateXP(hits, STROOP_ROUNDS, lvl, false, mc, perfect);
     setXpEarned(xp);
+    setSessionMaxCombo(mc);
+    setSessionIsPerfect(perfect);
+    const newPB = pbRef.current === null || currentAccuracy > pbRef.current;
+    setIsNewPB(newPB);
+    const attempt = {
+      domain: 'reaction' as const, exercise_type: 'stroop',
+      difficulty_level: lvl, score: hits,
+      correct_count: hits, total_count: STROOP_ROUNDS,
+      avg_response_ms: avgMs, xp_earned: xp,
+      max_combo: mc, is_perfect: perfect ? 1 : 0, date: today,
+    };
     await Promise.all([
-      insertBrainAttempt({
-        domain: 'reaction', exercise_type: 'stroop',
-        difficulty_level: lvl, score: hits,
-        correct_count: hits, total_count: STROOP_ROUNDS,
-        avg_response_ms: avgMs, xp_earned: xp, date: today,
-      }),
+      insertBrainAttempt(attempt),
       setDomainProgress('reaction', nextLvl, xp, hits),
       incrementMissionProgress(today),
     ]);
+    const nb = await runBadgeChecksAfterSession(attempt);
+    setNewBadgesCount(nb.length);
   };
 
   const startMode = async (m: Mode) => {
@@ -242,7 +283,17 @@ export default function ReactionScreen() {
     setRunning(true);
     setFinished(false);
     setXpEarned(0);
+    setSessionMaxCombo(0);
+    setSessionIsPerfect(false);
+    setIsNewPB(false);
+    setNewBadgesCount(0);
+    // Load PB for this exercise type
+    const exType = m === 'tap' ? 'tap_target' : 'stroop';
+    const pb = await getPersonalBest('reaction', exType);
+    pbRef.current = pb?.bestAccuracy ?? null;
+    setPrevPBAccuracy(pb?.bestAccuracy ?? null);
     if (m === 'tap') {
+      tapComboRef.current = 0; tapMaxComboRef.current = 0;
       setTapsLeft(TAP_TARGETS);
       setTapHits(0);
       setTapMisses(0);
@@ -250,6 +301,7 @@ export default function ReactionScreen() {
       setTarget(null);
       setTimeout(() => showNextTarget(lvl, TAP_TARGETS, 0, 0, []), 500);
     } else {
+      stroopComboRef.current = 0; stroopMaxComboRef.current = 0;
       setStroopLeft(STROOP_ROUNDS);
       setStroopHits(0);
       stroopHitsRef.current = 0;
@@ -311,13 +363,35 @@ export default function ReactionScreen() {
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.resultContainer}>
-          <Text style={styles.resultEmoji}>{finalHits / total >= 0.8 ? '⚡' : '💪'}</Text>
-          <Text style={styles.resultTitle}>{finalHits / total >= 0.8 ? 'Blitzschnell!' : 'Gut gemacht!'}</Text>
+          <Text style={styles.resultEmoji}>{sessionIsPerfect ? '🏆' : finalHits / total >= 0.8 ? '⚡' : '💪'}</Text>
+          <Text style={styles.resultTitle}>{sessionIsPerfect ? 'Perfekt!' : finalHits / total >= 0.8 ? 'Blitzschnell!' : 'Gut gemacht!'}</Text>
           <Text style={styles.resultSub}>{finalHits} / {total} richtig</Text>
-          {avgResponseMs && <Text style={styles.resultSub}>Ø Reaktion: {avgResponseMs}ms</Text>}
+          {avgResponseMs != null && <Text style={styles.resultSub}>Ø Reaktion: {avgResponseMs}ms</Text>}
           <View style={styles.xpBadge}>
             <Text style={styles.xpBadgeText}>+{xpEarned} XP</Text>
           </View>
+          {sessionIsPerfect && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent2 + '33' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent2 }]}>💯 Perfekte Runde! +25 XP</Text>
+            </View>
+          )}
+          {sessionMaxCombo >= 3 && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.warm + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.warm }]}>
+                🔥 Bester Combo: x{sessionMaxCombo}{sessionMaxCombo >= 10 ? ' +20 XP' : sessionMaxCombo >= 5 ? ' +10 XP' : ' +5 XP'}
+              </Text>
+            </View>
+          )}
+          {isNewPB ? (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent }]}>🏆 Neuer Persönlicher Rekord!</Text>
+            </View>
+          ) : prevPBAccuracy !== null && (
+            <Text style={styles.pbText}>Dein Rekord: {Math.round(prevPBAccuracy * 100)}%</Text>
+          )}
+          {newBadgesCount > 0 && (
+            <Text style={styles.badgeUnlock}>🎉 {newBadgesCount} neue{newBadgesCount > 1 ? ' Badges' : 's Badge'} freigeschaltet!</Text>
+          )}
           <Pressable onPress={() => { setMode(null); setFinished(false); setRunning(false); }} style={styles.playAgainBtn} accessibilityRole="button" accessibilityLabel="Nochmal spielen">
             <RefreshCw size={16} color={COLORS.bg} />
             <Text style={styles.playAgainText}>Nochmal spielen</Text>
@@ -613,4 +687,8 @@ const styles = StyleSheet.create({
   playAgainText: { color: COLORS.bg, fontSize: 16, fontWeight: '700' },
   backLink: { paddingVertical: 8 },
   backLinkText: { color: COLORS.muted, fontSize: 14 },
+  bonusBadge: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center' },
+  bonusText: { fontSize: 14, fontWeight: '700' },
+  pbText: { color: COLORS.muted, fontSize: 13 },
+  badgeUnlock: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
 });

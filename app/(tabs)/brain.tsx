@@ -82,7 +82,15 @@ export default function BrainScreen() {
       let m = await getDailyMission(today);
       if (!m) {
         const generated = generateDailyMission(today);
-        await saveDailyMission({ ...generated, completedCount: 0, completed: false });
+        await saveDailyMission({
+          date: generated.date,
+          domain: generated.domain,
+          exercise_type: generated.exerciseType,
+          target_count: generated.targetCount,
+          completed_count: 0,
+          reward_xp: generated.rewardXP,
+          completed: false,
+        });
         m = await getDailyMission(today);
       }
       setMission(m);

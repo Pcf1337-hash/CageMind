@@ -25,8 +25,17 @@ import {
   setDomainProgress,
   insertBrainAttempt,
   incrementMissionProgress,
+  getPersonalBest,
 } from '../../lib/database';
-import { calculateNextLevel, calculateXP, DOMAIN_META } from '../../lib/brainTraining';
+import { calculateNextLevel, calculateXP, DOMAIN_META, runBadgeChecksAfterSession } from '../../lib/brainTraining';
+
+// ─── Time Limit per Level ──────────────────────────────────────────
+function getTimeLimit(level: number): number {
+  if (level >= 9) return 60;
+  if (level >= 7) return 90;
+  if (level >= 5) return 120;
+  return 0; // no limit = count up
+}
 
 // ─── Card Data ─────────────────────────────────────────────────────
 const CARD_SETS: string[][] = [
@@ -115,34 +124,76 @@ export default function MemoryScreen() {
   const [matchedIds, setMatchedIds] = useState<Set<number>>(new Set());
   const [moves, setMoves] = useState(0);
   const [timer, setTimer] = useState(0);
+  const [timeLimit, setTimeLimit] = useState(0);
+  const [timedOut, setTimedOut] = useState(false);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [setIdx, setSetIdx] = useState(0);
   const [xpEarned, setXpEarned] = useState(0);
   const [correctPairs, setCorrectPairs] = useState(0);
+  // Combo & extras
+  const [combo, setCombo] = useState(0);
+  const [sessionMaxCombo, setSessionMaxCombo] = useState(0);
+  const [sessionIsPerfect, setSessionIsPerfect] = useState(false);
+  const [isNewPB, setIsNewPB] = useState(false);
+  const [prevPBAccuracy, setPrevPBAccuracy] = useState<number | null>(null);
+  const [newBadgesCount, setNewBadgesCount] = useState(0);
+  const maxComboRef = useRef(0);
+  const comboRef = useRef(0);
+  const pbRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pairs = getPairsForLevel(level);
 
   const startGame = useCallback(async () => {
     const lvl = await getDomainLevel('memory');
     setLevel(lvl);
+    const limit = getTimeLimit(lvl);
+    setTimeLimit(limit);
     const newCards = buildCards(pairs, setIdx);
     setCards(newCards);
     setFlippedIds([]);
     setMatchedIds(new Set());
     setMoves(0);
-    setTimer(0);
+    setTimer(limit > 0 ? limit : 0);
+    setTimedOut(false);
     setRunning(true);
     setFinished(false);
     setCorrectPairs(0);
+    setCombo(0);
+    comboRef.current = 0;
+    maxComboRef.current = 0;
+    setNewBadgesCount(0);
+    // Load PB
+    const pb = await getPersonalBest('memory', 'memory_cards');
+    pbRef.current = pb?.bestAccuracy ?? null;
+    setPrevPBAccuracy(pb?.bestAccuracy ?? null);
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
+    if (limit > 0) {
+      timerRef.current = setInterval(() => {
+        setTimer(t => {
+          if (t <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            setTimedOut(true);
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    } else {
+      timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
+    }
   }, [pairs, setIdx]);
 
   useEffect(() => {
     startGame();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
+
+  useEffect(() => {
+    if (timedOut && running) {
+      finishGame(false);
+    }
+  }, [timedOut, running]);
 
   useEffect(() => {
     if (matchedIds.size === pairs * 2 && pairs > 0) {
@@ -155,24 +206,36 @@ export default function MemoryScreen() {
     setRunning(false);
     setFinished(true);
     const today = getLocalDateString(new Date());
-    const correct = won ? pairs : matchedIds.size / 2;
+    const correct = won ? pairs : Math.round(matchedIds.size / 2);
     const total = pairs;
-    const avgMs = moves > 0 ? (timer * 1000) / moves : 3000;
+    const perfect = correct === total;
+    const mc = maxComboRef.current;
+    const currentAccuracy = total > 0 ? correct / total : 0;
+    const elapsedOrTimer = timer;
+    const avgMs = moves > 0 ? (elapsedOrTimer * 1000) / moves : 3000;
     const currentLevel = await getDomainLevel('memory');
     const nextLvl = calculateNextLevel(currentLevel, correct, total, avgMs, 'memory');
-    const xp = calculateXP(correct, total, currentLevel, false);
+    const xp = calculateXP(correct, total, currentLevel, false, mc, perfect);
+    const newPB = pbRef.current === null || currentAccuracy > pbRef.current;
     setXpEarned(xp);
     setCorrectPairs(correct);
+    setSessionMaxCombo(mc);
+    setSessionIsPerfect(perfect);
+    setIsNewPB(newPB);
+    const attempt = {
+      domain: 'memory' as const, exercise_type: 'memory_cards',
+      difficulty_level: currentLevel, score: correct,
+      correct_count: correct, total_count: total,
+      avg_response_ms: Math.round(avgMs), xp_earned: xp,
+      max_combo: mc, is_perfect: perfect ? 1 : 0, date: today,
+    };
     await Promise.all([
-      insertBrainAttempt({
-        domain: 'memory', exercise_type: 'memory_cards',
-        difficulty_level: currentLevel, score: correct,
-        correct_count: correct, total_count: total,
-        avg_response_ms: Math.round(avgMs), xp_earned: xp, date: today,
-      }),
+      insertBrainAttempt(attempt),
       setDomainProgress('memory', nextLvl, xp, correct),
       incrementMissionProgress(today),
     ]);
+    const nb = await runBadgeChecksAfterSession(attempt);
+    setNewBadgesCount(nb.length);
   }, [moves, timer, matchedIds, pairs]);
 
   const handleCardPress = (id: number) => {
@@ -189,12 +252,17 @@ export default function MemoryScreen() {
       const [a, b] = newFlipped;
       if (cards[a].emoji === cards[b].emoji) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        comboRef.current += 1;
+        if (comboRef.current > maxComboRef.current) maxComboRef.current = comboRef.current;
+        setCombo(comboRef.current);
         setTimeout(() => {
           setMatchedIds(prev => new Set([...prev, a, b]));
           setFlippedIds([]);
         }, 400);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        comboRef.current = 0;
+        setCombo(0);
         setTimeout(() => setFlippedIds([]), 900);
       }
     }
@@ -214,16 +282,38 @@ export default function MemoryScreen() {
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.resultContainer}>
-          <Text style={styles.resultEmoji}>{correctPairs === pairs ? '🏆' : '🎯'}</Text>
+          <Text style={styles.resultEmoji}>{sessionIsPerfect ? '🏆' : correctPairs === pairs ? '🎯' : '💪'}</Text>
           <Text style={styles.resultTitle}>
-            {correctPairs === pairs ? 'Perfekt!' : 'Gut gemacht!'}
+            {sessionIsPerfect ? 'Perfekt!' : correctPairs === pairs ? 'Geschafft!' : 'Zeit abgelaufen!'}
           </Text>
           <Text style={styles.resultSub}>
-            {correctPairs} / {pairs} Paare · {moves} Züge · {timer}s
+            {correctPairs} / {pairs} Paare · {moves} Züge
           </Text>
           <View style={styles.xpBadge}>
             <Text style={styles.xpBadgeText}>+{xpEarned} XP</Text>
           </View>
+          {sessionIsPerfect && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent2 + '33' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent2 }]}>💯 Perfekte Runde! +25 XP</Text>
+            </View>
+          )}
+          {sessionMaxCombo >= 3 && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.warm + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.warm }]}>
+                🔥 Bester Combo: x{sessionMaxCombo}{sessionMaxCombo >= 10 ? ' +20 XP' : sessionMaxCombo >= 5 ? ' +10 XP' : ' +5 XP'}
+              </Text>
+            </View>
+          )}
+          {isNewPB ? (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent }]}>🏆 Neuer Persönlicher Rekord!</Text>
+            </View>
+          ) : prevPBAccuracy !== null && prevPBAccuracy < 1 && (
+            <Text style={styles.pbText}>Dein Rekord: {Math.round(prevPBAccuracy * 100)}%</Text>
+          )}
+          {newBadgesCount > 0 && (
+            <Text style={styles.badgeUnlock}>🎉 {newBadgesCount} neue{newBadgesCount > 1 ? ' Badges' : 's Badge'} freigeschaltet!</Text>
+          )}
           <Pressable
             onPress={() => { setSetIdx(i => i + 1); startGame(); }}
             style={styles.playAgainBtn}
@@ -248,8 +338,10 @@ export default function MemoryScreen() {
           <ChevronLeft size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Gedächtnis 🃏</Text>
-        <View style={styles.timerBadge}>
-          <Text style={styles.timerText}>{timer}s</Text>
+        <View style={[styles.timerBadge, timeLimit > 0 && timer <= 20 && { backgroundColor: COLORS.danger + '22' }]}>
+          <Text style={[styles.timerText, timeLimit > 0 && timer <= 20 && { color: COLORS.danger }]}>
+            {timeLimit > 0 ? `${timer}s ⏱` : `${timer}s`}
+          </Text>
         </View>
       </View>
 
@@ -257,6 +349,12 @@ export default function MemoryScreen() {
         <Text style={styles.statPill}>Level {level}</Text>
         <Text style={styles.statPill}>{matchedIds.size / 2} / {pairs} Paare</Text>
         <Text style={styles.statPill}>{moves} Züge</Text>
+        {combo >= 3
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '33', color: COLORS.warm }]}>🔥 x{combo}</Text>
+          : combo >= 2
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '22', color: COLORS.warm }]}>x{combo}</Text>
+          : null
+        }
       </View>
 
       <View style={styles.grid}>
@@ -364,4 +462,8 @@ const styles = StyleSheet.create({
   playAgainText: { color: COLORS.bg, fontSize: 16, fontWeight: '700' },
   backLink: { paddingVertical: 8 },
   backLinkText: { color: COLORS.muted, fontSize: 14 },
+  bonusBadge: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center' },
+  bonusText: { fontSize: 14, fontWeight: '700' },
+  pbText: { color: COLORS.muted, fontSize: 13 },
+  badgeUnlock: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
 });

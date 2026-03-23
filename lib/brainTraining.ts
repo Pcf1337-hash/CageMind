@@ -1,4 +1,8 @@
-import { BrainDomain } from './database';
+import {
+  BrainDomain, BrainAttempt,
+  getBadges, getBrainStreak, getXP, getBrainAttempts,
+  getDomainProgress, unlockBadge,
+} from './database';
 
 export type { BrainDomain };
 
@@ -64,12 +68,29 @@ export function calculateXP(
   correctCount: number,
   totalCount: number,
   difficultyLevel: number,
-  isMissionCompleted: boolean
+  isMissionCompleted: boolean,
+  maxCombo: number = 0,
+  isPerfect: boolean = false
 ): number {
   const base = correctCount * 5;
   const levelBonus = difficultyLevel * 3;
+  const comboBonus = maxCombo >= 10 ? 20 : maxCombo >= 5 ? 10 : maxCombo >= 3 ? 5 : 0;
+  const perfectBonus = isPerfect ? 25 : 0;
   const missionBonus = isMissionCompleted ? 50 : 0;
-  return Math.round(base + levelBonus + missionBonus);
+  return Math.round(base + levelBonus + comboBonus + perfectBonus + missionBonus);
+}
+
+export function getXPBreakdown(
+  correctCount: number,
+  totalCount: number,
+  difficultyLevel: number,
+  maxCombo: number,
+  isPerfect: boolean
+): { base: number; comboBonus: number; perfectBonus: number; total: number } {
+  const base = correctCount * 5 + difficultyLevel * 3;
+  const comboBonus = maxCombo >= 10 ? 20 : maxCombo >= 5 ? 10 : maxCombo >= 3 ? 5 : 0;
+  const perfectBonus = isPerfect ? 25 : 0;
+  return { base, comboBonus, perfectBonus, total: base + comboBonus + perfectBonus };
 }
 
 // ─── Level-System ─────────────────────────────────────────────────
@@ -137,11 +158,16 @@ export const BRAIN_BADGES: Badge[] = [
   { id: 'xp_2000',          label: 'Erfahrener',         icon: '🌙', description: '2000 XP gesammelt' },
   { id: 'accuracy_90',      label: 'Perfektionist',      icon: '✨', description: '90% Genauigkeit in einer Runde' },
   { id: 'speed_demon',      label: 'Speed-Demon',        icon: '💨', description: 'Reaktion unter 400ms' },
+  { id: 'combo_3',          label: 'Combo x3',           icon: '🔥', description: '3er-Combo in einer Session' },
+  { id: 'combo_5',          label: 'Combo x5',           icon: '⚡', description: '5er-Combo in einer Session' },
+  { id: 'combo_10',         label: 'Combo-Meister',      icon: '💥', description: '10er-Combo erreicht!' },
+  { id: 'perfect_round',    label: 'Perfekte Runde',     icon: '💯', description: '100% Genauigkeit in einer Session' },
+  { id: 'xp_5000',          label: 'Legende',            icon: '🔮', description: '5000 XP gesammelt' },
 ];
 
 // ─── Badge-Checker ─────────────────────────────────────────────────
 export function checkBadgeUnlocks(
-  attempt: BrainAttemptInput,
+  attempt: BrainAttempt,
   stats: {
     totalAttempts: number;
     streak: number;
@@ -154,37 +180,74 @@ export function checkBadgeUnlocks(
   const toUnlock: string[] = [];
   const has = (id: string) => stats.unlockedBadgeIds.includes(id);
 
-  // First play badges
   if (!has('first_' + attempt.domain)) toUnlock.push('first_' + attempt.domain);
 
-  // All domains
-  if (!has('all_domains') && stats.playedDomains.size === 4) {
-    toUnlock.push('all_domains');
-  }
+  if (!has('all_domains') && stats.playedDomains.size === 4) toUnlock.push('all_domains');
 
-  // Streak
   if (!has('streak_3') && stats.streak >= 3) toUnlock.push('streak_3');
   if (!has('streak_7') && stats.streak >= 7) toUnlock.push('streak_7');
   if (!has('streak_30') && stats.streak >= 30) toUnlock.push('streak_30');
 
-  // Domain levels
   const dl = stats.domainLevels;
   if (!has('level_5_memory') && (dl.memory ?? 0) >= 5) toUnlock.push('level_5_memory');
   if (!has('level_5_logic') && (dl.logic ?? 0) >= 5) toUnlock.push('level_5_logic');
   if (!has('level_5_reaction') && (dl.reaction ?? 0) >= 5) toUnlock.push('level_5_reaction');
 
-  // XP
   if (!has('xp_500') && stats.totalXP >= 500) toUnlock.push('xp_500');
   if (!has('xp_2000') && stats.totalXP >= 2000) toUnlock.push('xp_2000');
+  if (!has('xp_5000') && stats.totalXP >= 5000) toUnlock.push('xp_5000');
 
-  // Per-attempt
-  const accuracy = attempt.totalCount > 0 ? attempt.correctCount / attempt.totalCount : 0;
+  const accuracy = attempt.total_count > 0 ? attempt.correct_count / attempt.total_count : 0;
   if (!has('accuracy_90') && accuracy >= 0.9) toUnlock.push('accuracy_90');
-  if (!has('speed_demon') && attempt.domain === 'reaction' && (attempt.avgResponseMs ?? 9999) < 400) {
+  if (!has('speed_demon') && attempt.domain === 'reaction' && (attempt.avg_response_ms ?? 9999) < 400) {
     toUnlock.push('speed_demon');
   }
 
+  const mc = attempt.max_combo ?? 0;
+  if (!has('combo_3') && mc >= 3) toUnlock.push('combo_3');
+  if (!has('combo_5') && mc >= 5) toUnlock.push('combo_5');
+  if (!has('combo_10') && mc >= 10) toUnlock.push('combo_10');
+
+  if (!has('perfect_round') && attempt.is_perfect === 1) toUnlock.push('perfect_round');
+
   return toUnlock;
+}
+
+// ─── Badge-Check nach jeder Session ───────────────────────────────
+export async function runBadgeChecksAfterSession(attempt: BrainAttempt): Promise<string[]> {
+  try {
+    const [badges, streak, xp, allAttempts, memProg, langProg, logicProg, reactProg] = await Promise.all([
+      getBadges(),
+      getBrainStreak(),
+      getXP(),
+      getBrainAttempts(undefined, 999),
+      getDomainProgress('memory'),
+      getDomainProgress('language'),
+      getDomainProgress('logic'),
+      getDomainProgress('reaction'),
+    ]);
+    const domainLevels = {
+      memory: memProg.current_level,
+      language: langProg.current_level,
+      logic: logicProg.current_level,
+      reaction: reactProg.current_level,
+    };
+    const playedDomains = new Set(allAttempts.map(a => a.domain)) as Set<BrainDomain>;
+    const unlockedBadgeIds = badges.map(b => b.id);
+    const newBadgeIds = checkBadgeUnlocks(attempt, {
+      totalAttempts: allAttempts.length,
+      streak,
+      domainLevels,
+      totalXP: xp,
+      unlockedBadgeIds,
+      playedDomains,
+    });
+    await Promise.all(newBadgeIds.map(id => unlockBadge(id)));
+    return newBadgeIds;
+  } catch (error) {
+    console.error('Badge-Check fehlgeschlagen:', error);
+    return [];
+  }
 }
 
 // ─── Domain-Metadaten ──────────────────────────────────────────────

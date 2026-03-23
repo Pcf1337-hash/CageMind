@@ -400,8 +400,10 @@ export interface BrainAttempt {
   score: number;
   correct_count: number;
   total_count: number;
-  avg_response_ms: number | null;
+  avg_response_ms?: number | null;
   xp_earned: number;
+  max_combo?: number;
+  is_perfect?: number;
   date: string;
   created_at?: string;
 }
@@ -472,17 +474,21 @@ export async function initBrainTables(): Promise<void> {
       completed INTEGER NOT NULL DEFAULT 0
     );
   `);
+  // Migrations: add columns if not yet present (fails silently if already exist)
+  const dbMig = getDb();
+  try { await dbMig.execAsync(`ALTER TABLE brain_attempts ADD COLUMN max_combo INTEGER DEFAULT 0`); } catch {}
+  try { await dbMig.execAsync(`ALTER TABLE brain_attempts ADD COLUMN is_perfect INTEGER DEFAULT 0`); } catch {}
 }
 
 export async function insertBrainAttempt(attempt: BrainAttempt): Promise<void> {
   try {
     const database = getDb();
     await database.runAsync(
-      `INSERT INTO brain_attempts (domain, exercise_type, difficulty_level, score, correct_count, total_count, avg_response_ms, xp_earned, date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO brain_attempts (domain, exercise_type, difficulty_level, score, correct_count, total_count, avg_response_ms, xp_earned, max_combo, is_perfect, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [attempt.domain, attempt.exercise_type, attempt.difficulty_level, attempt.score,
        attempt.correct_count, attempt.total_count, attempt.avg_response_ms ?? null,
-       attempt.xp_earned, attempt.date]
+       attempt.xp_earned, attempt.max_combo ?? 0, attempt.is_perfect ?? 0, attempt.date]
     );
   } catch (error) {
     console.error('Fehler beim Speichern des Brain-Attempts:', error);
@@ -648,6 +654,24 @@ export async function incrementMissionProgress(date: string): Promise<BrainDaily
       [date]
     );
     return getDailyMission(date);
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function getPersonalBest(
+  domain: BrainDomain,
+  exerciseType: string
+): Promise<{ bestAccuracy: number } | null> {
+  try {
+    const database = getDb();
+    const row = await database.getFirstAsync<{ best_accuracy: number | null }>(
+      `SELECT MAX(CAST(correct_count AS REAL) / NULLIF(total_count, 0)) as best_accuracy
+       FROM brain_attempts WHERE domain = ? AND exercise_type = ? AND total_count > 0`,
+      [domain, exerciseType]
+    );
+    if (!row || row.best_accuracy === null) return null;
+    return { bestAccuracy: row.best_accuracy };
   } catch (error) {
     return null;
   }

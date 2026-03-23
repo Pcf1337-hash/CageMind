@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] — 2026-03-23
+
+### Neu
+- Combo-System: Aufeinanderfolgende richtige Antworten bauen einen Combo-Multiplikator auf (+5/+10/+20 XP)
+- Perfekte Runde: 100% Genauigkeit in einer Session gibt extra +25 XP und ein spezielles Abzeichen
+- Persönlicher Rekord: Nach jeder Session Vergleich mit deiner bisherigen Bestleistung
+- Gedächtnis-Zeitlimit: Ab Level 5 lauft ein Countdown (120s/90s/60s) — der Druck steigt!
+- Combo-Anzeige live im Spiel: Bei 3+ richtigen in Folge leuchtet die Flamme
+- 6 neue Badges: Combo x3, Combo x5, Combo-Meister, Perfekte Runde, Legende (5000 XP) und mehr
+- Badge-System jetzt vollstandig verknupft: Badges werden nach jeder Session automatisch freigeschaltet
+
+### Verbesserungen
+- Ergebnis-Screen zeigt jetzt XP-Aufschlussel (Basis + Combo-Bonus + Perfekt-Bonus)
+- Brain-Zentrale: Tages-Mission korrekt initialisiert
+- TypeScript: Alle Typen bereinigt (avg_response_ms optional, BrainDailyMission snake_case)
+
 ## [1.3.0] — 2026-03-22
 
 ### Neu

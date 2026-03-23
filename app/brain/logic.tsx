@@ -19,13 +19,16 @@ import {
   setDomainProgress,
   insertBrainAttempt,
   incrementMissionProgress,
+  getPersonalBest,
 } from '../../lib/database';
 import {
   calculateNextLevel,
   calculateXP,
+  getXPBreakdown,
   generateNumberSequence,
   generateWrongAnswers,
   NumberSequence,
+  runBadgeChecksAfterSession,
 } from '../../lib/brainTraining';
 
 const ROUNDS = 8;
@@ -75,6 +78,15 @@ export default function LogicScreen() {
   const [xpEarned, setXpEarned] = useState(0);
   const [combo, setCombo] = useState(0);
 
+  // Result extras
+  const [sessionMaxCombo, setSessionMaxCombo] = useState(0);
+  const [sessionIsPerfect, setSessionIsPerfect] = useState(false);
+  const [isNewPB, setIsNewPB] = useState(false);
+  const [prevPBAccuracy, setPrevPBAccuracy] = useState<number | null>(null);
+  const [newBadgesCount, setNewBadgesCount] = useState(0);
+  const maxComboRef = useRef(0);
+  const pbRef = useRef<number | null>(null);
+
   // Sequence mode
   const [sequence, setSequence] = useState<NumberSequence | null>(null);
   const [options, setOptions] = useState<number[]>([]);
@@ -97,7 +109,15 @@ export default function LogicScreen() {
     setCorrect(0);
     correctRef.current = 0;
     setCombo(0);
+    maxComboRef.current = 0;
     setFinished(false);
+    setIsNewPB(false);
+    setNewBadgesCount(0);
+    // Load PB before session starts
+    const exType = m === 'sequence' ? 'number_sequence' : 'math_sprint';
+    const pb = await getPersonalBest('logic', exType);
+    pbRef.current = pb?.bestAccuracy ?? null;
+    setPrevPBAccuracy(pb?.bestAccuracy ?? null);
     loadRound(m, lvl, 1);
   }, []);
 
@@ -155,19 +175,30 @@ export default function LogicScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
     setFinished(true);
     const today = getLocalDateString(new Date());
+    const mc = maxComboRef.current;
+    const perfect = finalCorrect === ROUNDS;
+    const currentAccuracy = finalCorrect / ROUNDS;
     const nextLvl = calculateNextLevel(lvl, finalCorrect, ROUNDS, 10000, 'logic');
-    const xp = calculateXP(finalCorrect, ROUNDS, lvl, false);
+    const xp = calculateXP(finalCorrect, ROUNDS, lvl, false, mc, perfect);
+    const exType = m === 'sequence' ? 'number_sequence' : 'math_sprint';
     setXpEarned(xp);
+    setSessionMaxCombo(mc);
+    setSessionIsPerfect(perfect);
+    const newPB = pbRef.current === null || currentAccuracy > pbRef.current;
+    setIsNewPB(newPB);
+    const attempt = {
+      domain: 'logic' as const, exercise_type: exType,
+      difficulty_level: lvl, score: finalCorrect,
+      correct_count: finalCorrect, total_count: ROUNDS,
+      xp_earned: xp, max_combo: mc, is_perfect: perfect ? 1 : 0, date: today,
+    };
     await Promise.all([
-      insertBrainAttempt({
-        domain: 'logic', exercise_type: m === 'sequence' ? 'number_sequence' : 'math_sprint',
-        difficulty_level: lvl, score: finalCorrect,
-        correct_count: finalCorrect, total_count: ROUNDS,
-        xp_earned: xp, date: today,
-      }),
+      insertBrainAttempt(attempt),
       setDomainProgress('logic', nextLvl, xp, finalCorrect),
       incrementMissionProgress(today),
     ]);
+    const nb = await runBadgeChecksAfterSession(attempt);
+    setNewBadgesCount(nb.length);
   };
 
   const handleSequenceAnswer = (answer: number) => {
@@ -177,7 +208,11 @@ export default function LogicScreen() {
     setFeedback(isCorrect ? 'correct' : 'wrong');
     if (isCorrect) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setCombo(c => c + 1);
+      setCombo(c => {
+        const newC = c + 1;
+        if (newC > maxComboRef.current) maxComboRef.current = newC;
+        return newC;
+      });
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       setCombo(0);
@@ -194,7 +229,11 @@ export default function LogicScreen() {
     setMathInput('');
     if (isCorrect) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setCombo(c => c + 1);
+      setCombo(c => {
+        const newC = c + 1;
+        if (newC > maxComboRef.current) maxComboRef.current = newC;
+        return newC;
+      });
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       setCombo(0);
@@ -248,13 +287,35 @@ export default function LogicScreen() {
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.resultContainer}>
-          <Text style={styles.resultEmoji}>{correct >= ROUNDS * 0.8 ? '🎯' : '💡'}</Text>
-          <Text style={styles.resultTitle}>{correct >= ROUNDS * 0.8 ? 'Stark!' : 'Gute Übung!'}</Text>
+          <Text style={styles.resultEmoji}>{sessionIsPerfect ? '🏆' : correct >= ROUNDS * 0.8 ? '🎯' : '💡'}</Text>
+          <Text style={styles.resultTitle}>{sessionIsPerfect ? 'Perfekt!' : correct >= ROUNDS * 0.8 ? 'Stark!' : 'Gute Übung!'}</Text>
           <Text style={styles.resultSub}>{correct} / {ROUNDS} richtig</Text>
           <View style={styles.xpBadge}>
             <Text style={styles.xpBadgeText}>+{xpEarned} XP</Text>
           </View>
-          <Pressable onPress={() => { setMode(null); setFinished(false); }} style={styles.playAgainBtn} accessibilityRole="button" accessibilityLabel="Nochmal spielen">
+          {sessionIsPerfect && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent2 + '33' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent2 }]}>💯 Perfekte Runde! +25 XP</Text>
+            </View>
+          )}
+          {sessionMaxCombo >= 3 && (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.warm + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.warm }]}>
+                🔥 Bester Combo: x{sessionMaxCombo}{sessionMaxCombo >= 10 ? ' +20 XP' : sessionMaxCombo >= 5 ? ' +10 XP' : ' +5 XP'}
+              </Text>
+            </View>
+          )}
+          {isNewPB ? (
+            <View style={[styles.bonusBadge, { backgroundColor: COLORS.accent + '22' }]}>
+              <Text style={[styles.bonusText, { color: COLORS.accent }]}>🏆 Neuer Persönlicher Rekord!</Text>
+            </View>
+          ) : prevPBAccuracy !== null && (
+            <Text style={styles.pbText}>Dein Rekord: {Math.round(prevPBAccuracy * 100)}%</Text>
+          )}
+          {newBadgesCount > 0 && (
+            <Text style={styles.badgeUnlock}>🎉 {newBadgesCount} neue{newBadgesCount > 1 ? ' Badges' : 's Badge'} freigeschaltet!</Text>
+          )}
+          <Pressable onPress={() => { setMode(null); setFinished(false); maxComboRef.current = 0; }} style={styles.playAgainBtn} accessibilityRole="button" accessibilityLabel="Nochmal spielen">
             <RefreshCw size={16} color={COLORS.bg} />
             <Text style={styles.playAgainText}>Nochmal spielen</Text>
           </Pressable>
@@ -282,7 +343,12 @@ export default function LogicScreen() {
         <Text style={styles.statPill}>Level {level}</Text>
         <Text style={styles.statPill}>{round} / {ROUNDS}</Text>
         <Text style={styles.statPill}>{correct} ✓</Text>
-        {combo >= 2 && <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '33', color: COLORS.warm }]}>{combo}× Combo!</Text>}
+        {combo >= 3
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '33', color: COLORS.warm }]}>🔥 x{combo}</Text>
+          : combo >= 2
+          ? <Text style={[styles.statPill, { backgroundColor: COLORS.warm + '22', color: COLORS.warm }]}>x{combo}</Text>
+          : null
+        }
       </View>
 
       <View style={styles.progressTrack}>
@@ -550,4 +616,13 @@ const styles = StyleSheet.create({
   playAgainText: { color: COLORS.bg, fontSize: 16, fontWeight: '700' },
   backLink: { paddingVertical: 8 },
   backLinkText: { color: COLORS.muted, fontSize: 14 },
+  bonusBadge: {
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  bonusText: { fontSize: 14, fontWeight: '700' },
+  pbText: { color: COLORS.muted, fontSize: 13 },
+  badgeUnlock: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
 });
